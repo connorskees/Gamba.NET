@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -81,6 +82,8 @@ namespace GambaDotnet
             children = nodes.ToList();
         }
 
+        public override string ToString() => to_string();
+
         public string to_string(bool withParenthesis = false, int end = -1, Dictionary<long, string> varNames = null)
         {
             var parenthesize = (string s) => withParenthesis ? $"({s})" : s;
@@ -91,7 +94,7 @@ namespace GambaDotnet
                 Assert.True(end <= children.Count);
 
             if (type == NodeType.CONSTANT)
-                return constant.ToString();
+                return ((long)constant).ToString();
             if (type == NodeType.VARIABLE)
                 return varNames == null ? vname : varNames[__vidx];
 
@@ -126,9 +129,8 @@ namespace GambaDotnet
                         if (ret1 == "-1" && children.Count > 1 && end > 1)
                             ret = "-" + ret.Skip(3);
 
-                        parenthesize(ret);
+                        return parenthesize(ret);
                     }
-                    break;
                 case NodeType.SUM:
                     {
                         Assert.True(children.Count > 0);
@@ -156,16 +158,14 @@ namespace GambaDotnet
 
                         Assert.True(children.Count > 0);
                         var child1 = children[0];
-                        var ret = child1.to_string(child1.type > NodeType.INCL_DISJUNCTION, -1, varNames);
+                        var ret = child1.to_string(child1.type > type, -1, varNames);
                         foreach (var child in children.Skip(1))
-                            ret += op + child.to_string(child.type > NodeType.INCL_DISJUNCTION, -1, varNames);
+                            ret += op + child.to_string(child.type > type, -1, varNames);
                         return parenthesize(ret);
                     }
                 default:
                     throw new InvalidOperationException();
             }
-
-            throw new InvalidOperationException();
         }
     }
 }

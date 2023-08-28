@@ -127,6 +127,7 @@ namespace GambaDotnet.Parsing
         private Node CreateVar(string name)
         {
             var node = new Node(NodeType.VARIABLE, modulus, modRed);
+            node.vname = name;
             return node;
         }
 
