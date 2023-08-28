@@ -12,15 +12,12 @@ namespace GambaDotnet.Parsing
 {
     public class AstTranslationVisitor : ExprBaseVisitor<Node>
     {
-        private readonly uint bitSize;
-
         private readonly ulong modulus;
 
         private readonly bool modRed;
 
-        public AstTranslationVisitor(uint bitSize, ulong modulus, bool modRed)
+        public AstTranslationVisitor(ulong modulus, bool modRed)
         {
-            this.bitSize = bitSize;
             this.modulus = modulus;
             this.modRed = modRed;
         }
