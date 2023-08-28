@@ -1,0 +1,78 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="SIMBA">
+      <UniqueIdentifier>{bc8e115d-cd6f-42ae-a478-67e353d9d9bf}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="GambaExports.h" />
+    <ClInclude Include="SIMBA\BitwiseList.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\CSiMBA.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\LLVMParser.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\MBAChecker.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\Modulo.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\ShuttingYard.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\SiMBAPass.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\Simplifier.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\splitmix64.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\veque.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+    <ClInclude Include="SIMBA\Z3Prover.h">
+      <Filter>SIMBA</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="SIMBA\CSiMBA.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\LLVMParser.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\MBAChecker.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\Modulo.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\ShuttingYard.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\SiMBAPass.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\Simplifier.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+    <ClCompile Include="SIMBA\Z3Prover.cpp">
+      <Filter>SIMBA</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
