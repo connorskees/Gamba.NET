@@ -1,1 +1,0 @@
-This SIMBA implementation is from: https://github.com/pgarba/SiMBA-.
