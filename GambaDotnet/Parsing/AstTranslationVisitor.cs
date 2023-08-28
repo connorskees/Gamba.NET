@@ -89,7 +89,7 @@ namespace GambaDotnet.Parsing
             {
                 "~" => CreateNode(NodeType.NEGATION, op1),
                 // Write "-x" as "x * -1".
-                "-" => CreateNode(NodeType.PRODUCT, op1, CreateConstNode(-1)),
+                "-" => op1.type == NodeType.CONSTANT ? CreateConstNode(long.Parse($"-{op1.constant}")) : CreateNode(NodeType.PRODUCT, op1, CreateConstNode(-1)),
                 _ => throw new InvalidOperationException($"Unrecognized unary operator: {unaryOperator}")
             };
 

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace GambaDotnet
 {
-    internal static class Assert
+    public static class Assert
     {
         public static void True(bool condition)
         {
