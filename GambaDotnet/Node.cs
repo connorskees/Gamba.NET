@@ -73,6 +73,14 @@ namespace GambaDotnet
             this.modRed = modRed;
         }
 
+        public Node(NodeType type, ulong modulus, bool modRed, params Node[] nodes)
+        {
+            this.type = type;
+            this.modulus = modulus;
+            this.modRed = modRed;
+            children = nodes.ToList();
+        }
+
         public string to_string(bool withParenthesis = false, int end = -1, Dictionary<long, string> varNames = null)
         {
             var parenthesize = (string s) => withParenthesis ? $"({s})" : s;
