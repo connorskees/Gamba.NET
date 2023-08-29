@@ -40,15 +40,6 @@ namespace Gamba.Prototyping.Transpiler
             astTree.Enqueue(new FileDefinition(new List<AstItem>(), 0));
         }
 
-        public void Parse()
-        {
-            while(true)
-            {
-                var result = PeekNoIndentation();
-                index++;
-            }
-        }
-
         private (LineKind, string) PeekUntilNonEmptyChildOrExit()
         {
             while(true)
