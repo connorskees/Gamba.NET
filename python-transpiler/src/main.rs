@@ -143,8 +143,13 @@ impl TranslationContext {
         for stmt in def.body.iter() {
             match stmt {
                 ast::Stmt::Return(def) => {
-                    if (def.value.is_some()) {
-                        return_type = String::from("dynamic ")
+                    let to_str = self.visit_expr(*def.clone().value.unwrap());
+                    if (!def.value.is_some()) {
+                        return_type = String::from("void ")
+                    } else if (to_str.starts_with("Node") || to_str.starts_with("node")) {
+                        return_type = String::from("Node ");
+                    } else {
+                        return_type = String::from("dynamic ");
                     }
                 }
                 _ => {}
@@ -208,13 +213,20 @@ impl TranslationContext {
                             .insert(owning_function.range, HashSet::new());
                     }
 
-                    let map = &self.defined_variables[&owning_function.range];
+                    let map = self
+                        .defined_variables
+                        .get_mut(&owning_function.range)
+                        .unwrap();
 
                     is_first_definition = if (map.contains(&def.id.to_string())) {
                         false
                     } else {
                         true
                     };
+
+                    if (is_first_definition) {
+                        map.insert(def.id.to_string());
+                    }
                 }
 
                 var_name = format!(
@@ -266,7 +278,9 @@ impl TranslationContext {
                 ast::Constant::Ellipsis => todo!(),
             },
             ast::Expr::Call(call_expr) => {
-                let name = self.visit_expr(*call_expr.func);
+                let mut name = self.visit_expr(*call_expr.func);
+                name = name.replace("append", "Add");
+                name = name.replace("insert", "Insert");
                 if name == "len" && call_expr.args.len() == 1 {
                     format!(
                         "{}.length",
@@ -278,7 +292,7 @@ impl TranslationContext {
                             .join(", ")
                     )
                 } else {
-                    let new = if name.as_bytes()[0].is_ascii_uppercase() {
+                    let new = if name.as_bytes()[0].is_ascii_uppercase() && name == "Node" {
                         "new "
                     } else {
                         ""
@@ -329,12 +343,26 @@ impl TranslationContext {
                 );
 
                 let op = def.ops[0];
-                format!(
-                    "{} {} {}",
-                    self.visit_expr(*def.left),
-                    cmp_to_string(op),
-                    self.visit_expr(def.comparators[0].clone())
-                )
+                if (op == CmpOp::NotIn) {
+                    format!(
+                        "!(({}).Contains({}))",
+                        self.visit_expr(def.comparators[0].clone()),
+                        self.visit_expr(*def.left)
+                    )
+                } else if (op == CmpOp::In) {
+                    format!(
+                        "(({}).Contains({}))",
+                        self.visit_expr(def.comparators[0].clone()),
+                        self.visit_expr(*def.left)
+                    )
+                } else {
+                    format!(
+                        "{} {} {}",
+                        self.visit_expr(*def.left),
+                        cmp_to_string(op),
+                        self.visit_expr(def.comparators[0].clone())
+                    )
+                }
             }
             ast::Expr::BinOp(def) => {
                 format!(
