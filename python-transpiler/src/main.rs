@@ -105,7 +105,7 @@ impl TranslationContext {
         } else {
             (println!(" else {{"));
             self.visit_body(if_stmt.orelse);
-            (println!("}}"));
+            (println!("{}}}", self.indent()));
         }
     }
 
@@ -304,7 +304,11 @@ impl TranslationContext {
                         .into_iter()
                         .map(|expr| self.visit_expr(expr))
                         .collect::<Vec<_>>()
-                        .join(if def.op == BoolOp::And { "&& " } else { "|| " })
+                        .join(if def.op == BoolOp::And {
+                            " && "
+                        } else {
+                            " || "
+                        })
                 )
 
                 /*
