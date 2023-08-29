@@ -5,7 +5,7 @@ use std::{
 };
 
 use rustpython_parser::{
-    ast::{self, BoolOp, CmpOp, Operator, StmtFunctionDef, UnaryOp},
+    ast::{self, BoolOp, CmpOp, Operator, StmtClassDef, StmtFunctionDef, UnaryOp},
     text_size::TextRange,
     Parse,
 };
@@ -15,6 +15,8 @@ pub struct TranslationContext {
     defined_variables: HashMap<TextRange, HashSet<String>>,
     /// Current indentation
     indentation: usize,
+    /// The current class definition we are inside
+    owning_class: Option<StmtClassDef>,
     /// The current function definition we are inside
     owning_function: Option<StmtFunctionDef>,
     /// The current C# output
@@ -122,9 +124,11 @@ impl TranslationContext {
     }
 
     fn visit_class_def(&mut self, def: ast::StmtClassDef) {
-        (println!("public class {}\n{}{{", def.name, self.indent()));
+        (println!("public class {}\n{}{{", def.clone().name, self.indent()));
 
-        self.visit_body(def.body);
+        mem::swap(&mut self.owning_class, &mut Some(def.clone()));
+        self.visit_body(def.clone().body);
+        mem::swap(&mut self.owning_class, &mut Some(def.clone()));
 
         (println!("{}}}\n", self.indent()))
     }
@@ -134,10 +138,31 @@ impl TranslationContext {
     }
 
     fn visit_function_def(&mut self, def: ast::StmtFunctionDef) {
+        // Check if the function should have a 'void' or 'dynamic' type.
+        let mut return_type: String = String::from("void ");
+        for stmt in def.body.iter() {
+            match stmt {
+                ast::Stmt::Return(def) => {
+                    if (def.value.is_some()) {
+                        return_type = String::from("dynamic ")
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut name = def.name.to_string();
+        let is_constructor = def.name == String::from("__init__");
+        if (is_constructor) {
+            name = self.owning_class.clone().unwrap().name.to_string();
+            return_type = String::from("");
+        }
+
         (println!(
-            "{}public dynamic {}({})\n{}{{",
+            "{}public {}{}({})\n{}{{",
             self.indent(),
-            def.name,
+            return_type,
+            name,
             // doesn't handle kwargs or default values
             def.args
                 .args
@@ -274,12 +299,12 @@ impl TranslationContext {
             }
             ast::Expr::BoolOp(def) => {
                 format!(
-                    "{}",
+                    "({})",
                     def.values
                         .into_iter()
                         .map(|expr| self.visit_expr(expr))
                         .collect::<Vec<_>>()
-                        .join(if def.op == BoolOp::And { "&& " } else { "||" })
+                        .join(if def.op == BoolOp::And { "&& " } else { "|| " })
                 )
 
                 /*
@@ -317,7 +342,7 @@ impl TranslationContext {
             }
             ast::Expr::UnaryOp(def) => {
                 format!(
-                    "{} {}",
+                    "{}({})",
                     unary_op_to_string(def.op),
                     self.visit_expr(*def.operand)
                 )
@@ -440,6 +465,7 @@ fn main() {
     let mut context = TranslationContext {
         defined_variables: HashMap::new(),
         indentation: 0,
+        owning_class: None,
         owning_function: None,
         output: String::new(),
     };
