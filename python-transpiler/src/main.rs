@@ -159,6 +159,7 @@ impl TranslationContext {
     fn visit_assign(&mut self, def: ast::StmtAssign) {
         assert_eq!(def.targets.len(), 1, "too many assignment targets");
 
+        // dbg!(def.clone());
         let target = def.targets.first().unwrap();
 
         let mut var_name: String = String::new();
@@ -179,14 +180,16 @@ impl TranslationContext {
                 if let Some(owning_function) = self.owning_function.clone() {
                     if !self.defined_variables.contains_key(&owning_function.range) {
                         self.defined_variables
-                            .entry(owning_function.range)
-                            .or_default()
-                            .insert(def.id.to_string());
-
-                        // If this is the first assignment to "local_variable", then we prefix the assignment with a 'var' statement
-                        // and add it to the list of defined variables.
-                        is_first_definition = true;
+                            .insert(owning_function.range, HashSet::new());
                     }
+
+                    let map = &self.defined_variables[&owning_function.range];
+
+                    is_first_definition = if (map.contains(&def.id.to_string())) {
+                        false
+                    } else {
+                        true
+                    };
                 }
 
                 var_name = format!(

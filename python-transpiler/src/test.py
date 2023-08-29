@@ -486,18 +486,3 @@ class Parser():
         if self.__idx >= len(self.__expr) - 1:
             return ''
         return self.__expr[self.__idx + 1]
-
-
-# Parse the given expression in a modular field with given bit count.
-def parse(expr, bitCount, reduceConstants=True, refine=False, marklinear=False):
-    parser = Parser(expr, 2**bitCount, reduceConstants)
-    root = parser.parse_expression()
-
-    if root != None and refine:
-        root.refine()
-    if root != None and marklinear:
-        if not refine:
-            sys.exit("Error: Refine before marking linear subexpressions!")
-        else:
-            root.mark_linear()
-    return root
