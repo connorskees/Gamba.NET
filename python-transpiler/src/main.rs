@@ -206,7 +206,7 @@ impl TranslationContext {
                 }
             }
             ast::Expr::Constant(constant) => match constant.value {
-                ast::Constant::None => "ulong",
+                ast::Constant::None => "void",
                 ast::Constant::Bool(_) => "bool",
                 ast::Constant::Str(_) => "string",
                 ast::Constant::Bytes(_) => todo!(),
@@ -678,7 +678,8 @@ fn op_to_string(op: Operator) -> &'static str {
         Operator::BitOr => "|",
         Operator::BitXor => "^",
         Operator::BitAnd => "&",
-        Operator::FloorDiv => todo!(),
+        // C# does not have a floor division operator
+        Operator::FloorDiv => "FLOOR_DIVIDE",
     }
 }
 
