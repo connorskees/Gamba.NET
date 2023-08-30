@@ -274,6 +274,8 @@ impl TranslationContext {
             return String::new();
         }
 
+        //println!("def:\n");
+        //dbg!(def.clone());
         let return_type_str = self.visit_expr(*def.clone().returns.unwrap());
 
         return self.type_to_csharp(return_type_str);
@@ -288,6 +290,13 @@ impl TranslationContext {
             "Node" => "Node".to_owned(),
             "str" => "string".to_owned(),
             "NodeType" => "NodeType".to_owned(),
+            "list[str]" => "List<string>".to_owned(),
+            "list[Node]" => "List<Node>".to_owned(),
+            "Optional[int]" => "long?".to_owned(),
+            "tuple[(Node, Node)]" => "(Node, Node)".to_owned(),
+            "tuple[(list[Node], list[Any], list[IndexWithMultitude])]" => {
+                "(List<Node>, List<object>, List<IndexWithMultitude>)".to_owned()
+            }
             _ => {
                 dbg!(type_name);
                 todo!()
@@ -539,7 +548,7 @@ impl TranslationContext {
             // TODO: Handle generators?
             ast::Expr::List(def) => {
                 format!(
-                    "new List<dynamic>() {{ {} }}",
+                    "new List<object>() {{ {} }}",
                     def.elts
                         .into_iter()
                         .map(|expr| self.visit_expr(expr))

@@ -6153,6 +6153,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __get_index_of_more_complex_operand()
         {
+            var idk = new List() { 0, 1, 2 };
             Assert.True(this.__is_bitwise_binop());
             Assert.True(this.children.Count() == 2);
             var (c0, c1) = (this.children[0], this.children[1]);
