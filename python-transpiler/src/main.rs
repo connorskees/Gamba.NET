@@ -4,7 +4,7 @@ use std::{
 };
 
 use rustpython_parser::{
-    ast::{self, BoolOp, CmpOp, Operator, StmtClassDef, StmtFunctionDef, UnaryOp},
+    ast::{self, BoolOp, CmpOp, Comprehension, Operator, StmtClassDef, StmtFunctionDef, UnaryOp},
     text_size::TextRange,
     Parse,
 };
@@ -50,7 +50,7 @@ impl TranslationContext {
             ast::Stmt::Assign(def) => self.visit_assign(def),
             ast::Stmt::AsyncFunctionDef(_) => todo!(),
             ast::Stmt::Return(return_stmt) => self.visit_return_stmt(return_stmt),
-            ast::Stmt::Delete(_) => todo!(),
+            ast::Stmt::Delete(def) => self.visit_delete_statement(def),
             ast::Stmt::TypeAlias(_) => todo!(),
             ast::Stmt::AugAssign(def) => self.visit_aug_assign(def),
             ast::Stmt::AnnAssign(_) => todo!(),
@@ -64,20 +64,30 @@ impl TranslationContext {
             ast::Stmt::Raise(_) => todo!(),
             ast::Stmt::Try(try_stmt) => self.visit_try(try_stmt),
             ast::Stmt::TryStar(_) => todo!(),
-            ast::Stmt::Assert(_) => todo!(),
+            ast::Stmt::Assert(def) => self.visit_assert(def),
             ast::Stmt::Import(_) => {}
             ast::Stmt::ImportFrom(_) => {}
             ast::Stmt::Global(_) => todo!(),
             ast::Stmt::Nonlocal(_) => todo!(),
             ast::Stmt::Expr(stmt_expr) => self.visit_stmt_expr(stmt_expr),
             ast::Stmt::Pass(_) => todo!(),
-            ast::Stmt::Break(_) => todo!(),
-            ast::Stmt::Continue(_) => todo!(),
+            ast::Stmt::Break(_) => println!("{}break;", self.indent()),
+            ast::Stmt::Continue(_) => println!("{}continue;", self.indent()),
         }
     }
 
     fn visit_for(&mut self, for_stmt: ast::StmtFor) {
-        todo!("for loop")
+        assert_eq!(for_stmt.orelse.len(), 0);
+
+        println!(
+            "{}foreach (var {} in {}) {{",
+            self.indent(),
+            self.visit_expr(*for_stmt.target),
+            self.visit_expr(*for_stmt.iter)
+        );
+
+        self.visit_body(for_stmt.body);
+        println!("{}}}", self.indent());
     }
 
     fn visit_try(&mut self, try_stmt: ast::StmtTry) {
@@ -96,10 +106,31 @@ impl TranslationContext {
         println!("{}}}", self.indent());
     }
 
+    fn visit_assert(&mut self, assert_stmt: ast::StmtAssert) {
+        println!(
+            "{}assert({});",
+            self.indent(),
+            self.visit_expr(*assert_stmt.test)
+        );
+    }
+
     fn visit_return_stmt(&mut self, return_stmt: ast::StmtReturn) {
         if let Some(value) = return_stmt.value {
             println!("{}return {};", self.indent(), self.visit_expr(*value));
         }
+    }
+
+    fn visit_delete_statement(&mut self, def: ast::StmtDelete) {
+        assert_eq!(def.targets.len(), 1);
+        assert!(def.targets[0].is_subscript_expr() == true);
+
+        let subscript = def.targets[0].as_subscript_expr().unwrap();
+        println!(
+            "{}{}.RemoveAt({});",
+            self.indent(),
+            self.visit_expr(*subscript.clone().value),
+            self.visit_expr(*subscript.clone().slice)
+        );
     }
 
     fn visit_if_stmt(&mut self, if_stmt: ast::StmtIf) {
@@ -175,7 +206,7 @@ impl TranslationContext {
                 }
             }
             ast::Expr::Constant(constant) => match constant.value {
-                ast::Constant::None => todo!(),
+                ast::Constant::None => "ulong",
                 ast::Constant::Bool(_) => "bool",
                 ast::Constant::Str(_) => "string",
                 ast::Constant::Bytes(_) => todo!(),
@@ -251,7 +282,7 @@ impl TranslationContext {
         let var_name = match target {
             // Match self.instance_variable
             ast::Expr::Attribute(def) => {
-                let value = def.clone().value.expect_name_expr().id.to_string();
+                let value = self.visit_expr(*def.clone().value).replace("self", "this");
                 format!(
                     "{}.{}",
                     Self::self_to_this(value),
@@ -261,25 +292,7 @@ impl TranslationContext {
 
             // Match "local_variable ="
             ast::Expr::Name(def) => {
-                let mut is_first_definition = false;
-
-                if let Some(owning_function) = self.owning_function.clone() {
-                    if !self.defined_variables.contains_key(&owning_function.range) {
-                        self.defined_variables
-                            .insert(owning_function.range, HashSet::new());
-                    }
-
-                    let map = self
-                        .defined_variables
-                        .get_mut(&owning_function.range)
-                        .unwrap();
-
-                    is_first_definition = !map.contains(&def.id.to_string());
-
-                    if is_first_definition {
-                        map.insert(def.id.to_string());
-                    }
-                }
+                let is_first_definition = self.is_first_time_seeing_var(def.id.to_string());
 
                 format!(
                     "{}",
@@ -290,10 +303,34 @@ impl TranslationContext {
                     }
                 )
             }
-            _ => todo!(
-                "Unexpected assignment destination type: {}",
-                target.python_name()
-            ),
+
+            ast::Expr::Subscript(def) => {
+                format!("{}", self.visit_expr(target.clone()))
+            }
+
+            ast::Expr::Tuple(def) => {
+                // If a tuple is assigned to then it's always considered an 'ExprContextStore'.
+                let context: ast::ExprContextStore = def.ctx.store().unwrap();
+
+                format!(
+                    "var ({})",
+                    def.clone()
+                        .elts
+                        .into_iter()
+                        .map(|var| self.visit_expr(var))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+
+            _ => {
+                dbg!(target);
+
+                todo!(
+                    "Unexpected assignment destination type: {}",
+                    target.python_name()
+                )
+            }
         };
 
         // Print "var = "
@@ -303,6 +340,35 @@ impl TranslationContext {
             var_name,
             self.visit_expr(*def.value)
         );
+    }
+
+    fn is_first_time_seeing_var(&mut self, name: String) -> bool {
+        let mut is_first_definition = false;
+
+        if let Some(owning_function) = self.owning_function.clone() {
+            // Add a new Hashset of variable names corresponding to the current owning function.
+            if !self.defined_variables.contains_key(&owning_function.range) {
+                self.defined_variables
+                    .insert(owning_function.range, HashSet::new());
+            }
+
+            // Get the hashset.
+            let map = self
+                .defined_variables
+                .get_mut(&owning_function.range)
+                .unwrap();
+
+            // Check if the variable has any definition.
+            // A variable is 'defined' if it's an argument or if an assignment to a variable with the current name
+            // has already been processed.
+            is_first_definition = !map.contains(&name);
+
+            if is_first_definition {
+                map.insert(name.to_string());
+            }
+        }
+
+        return is_first_definition;
     }
 
     fn visit_aug_assign(&mut self, def: ast::StmtAugAssign) {
@@ -331,9 +397,28 @@ impl TranslationContext {
             },
             ast::Expr::Call(call_expr) => {
                 let mut name = self.visit_expr(*call_expr.func);
-                name = name.replace("append", "Add");
                 name = name.replace("insert", "Insert");
                 name = name.replace("re.match", "reutil.match");
+
+                // TODO: Refactor into helper method.
+                name = if name.ends_with(".equals") {
+                    name.replace(".equals", ".Equals")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with(".append") {
+                    name.replace(".append", ".Add")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with(".insert") {
+                    name.replace(".insert", ".Insert")
+                } else {
+                    name
+                };
+
                 if name == "len" && call_expr.args.len() == 1 {
                     format!(
                         "{}.Length",
@@ -478,9 +563,52 @@ impl TranslationContext {
                     },
                 )
             }
+            ast::Expr::IfExp(def) => {
+                format!(
+                    "({}) ? {} : {}",
+                    self.visit_expr(*def.test),
+                    self.visit_expr(*def.body),
+                    self.visit_expr(*def.orelse)
+                )
+            }
+            ast::Expr::Tuple(def) => {
+                format!(
+                    "({})",
+                    def.clone()
+                        .elts
+                        .into_iter()
+                        .map(|var| self.visit_expr(var))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ast::Expr::ListComp(def) => {
+                assert!(def.generators.len() == 1);
+
+                // Convert the generator into a LINQ 'While(x => predicate1 && predicate2 && predicate ... )' query.
+                let evaluated_generator = self.visit_generator(def.generators[0].clone());
+
+                // LINQ queries in C# follow the format of collection.Query(x => lambda_expression),
+                // where "x" is a variable name used to represent the input variable to the lambda.
+                // So first we must pick the variable name to use. If the generator supplies a name then we use it,
+                // if not we default to 'x';
+                let select_var_name = if def.elt.is_name_expr() {
+                    def.clone().elt.expect_name_expr().id.to_string()
+                } else {
+                    "x".to_owned()
+                };
+
+                // Here 'elt' is equivalent to the lamba on the right hand side of a linq query.
+                // E.g. if you have expression_list.Where(x => x.IsLinear()), this is equivalent to "x.IsLinear()".
+                let lambda = self.visit_expr(*def.elt.clone());
+
+                format!(
+                    "{}.Select({} => {})",
+                    evaluated_generator, select_var_name, lambda
+                )
+            }
             ast::Expr::NamedExpr(_)
             | ast::Expr::Lambda(_)
-            | ast::Expr::IfExp(_)
             | ast::Expr::Dict(_)
             | ast::Expr::Set(_)
             | ast::Expr::SetComp(_)
@@ -491,10 +619,33 @@ impl TranslationContext {
             | ast::Expr::YieldFrom(_)
             | ast::Expr::FormattedValue(_)
             | ast::Expr::JoinedStr(_)
-            | ast::Expr::Starred(_)
-            | ast::Expr::ListComp(_)
-            | ast::Expr::Tuple(_) => todo!("Unimplemented expression type {:#?}", expr),
+            | ast::Expr::Starred(_) => todo!("Unimplemented expression type {:#?}", expr),
         }
+    }
+
+    fn visit_generator(&mut self, comp: Comprehension) -> String {
+        // A comprehension in Python can be modeled as a series of LINQ queries.
+        // First you have the collection being queried on - which in this case is the 'iter' field of the comprehension.
+        let iterable_collection = self.visit_expr(comp.iter);
+
+        // Then the collection can be filtered using a series of if statements / predicates.
+        // We then filter the collection using .Where(if1 && if2 && ... ).
+        let linq_where_predicate = comp
+            .ifs
+            .iter()
+            .map(|predicate| self.visit_expr(predicate.clone()))
+            .collect::<Vec<_>>()
+            .join(" && ");
+
+        // Model the comprehe
+        let comprehension = format!(
+            "{}.Where({} => {})",
+            iterable_collection,
+            self.visit_expr(comp.target),
+            linq_where_predicate
+        );
+
+        return comprehension.to_owned();
     }
 }
 
