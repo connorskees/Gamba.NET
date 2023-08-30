@@ -6,6 +6,15 @@ using System.Threading.Tasks;
 
 namespace Gamba.Prototyping.Transpiled
 {
+    public static class Assert
+    {
+        public static void True(bool condition)
+        {
+            if (!condition)
+                throw new InvalidOperationException("Assertio failure.");
+        }
+    }
+
     public class Node
     {
         public enum NodeType

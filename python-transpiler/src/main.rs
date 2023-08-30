@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::{HashMap, HashSet},
     mem,
@@ -177,17 +178,28 @@ impl TranslationContext {
     }
 
     fn visit_function_decl_arg(&mut self, arg: &ast::ArgWithDefault) -> String {
-        let ty = self.expr_type(arg.default.clone());
         let name = arg.as_arg().arg.to_string();
         let default = arg
             .default
             .as_ref()
             .map(|default| format!("={}", self.visit_expr(*default.clone())));
 
+        if (name == "this" || name == "self") {
+            return format!("{}", "self");
+        }
+
+        if arg.clone().def.annotation.is_none() {
+            dbg!(arg.clone().def);
+            panic!("Function argument {} does not have type annotation!", name);
+        }
+
+        let annotation = arg.clone().def.annotation.unwrap();
+        let type_name = self.visit_expr(*annotation);
+        let ty = self.type_to_csharp(type_name.to_string());
         if let Some(default) = default {
             format!("{ty} {name}{default}")
         } else {
-            format!("dynamic {name}")
+            format!("{ty} {name}")
         }
     }
 
@@ -227,25 +239,6 @@ impl TranslationContext {
         .to_owned()
     }
 
-    fn function_return_type(&mut self, def: &ast::StmtFunctionDef) -> String {
-        let mut return_type = "void ".to_owned();
-        for stmt in def.body.iter() {
-            match stmt {
-                ast::Stmt::Return(def) => {
-                    return_type = self.expr_type(def.value.clone());
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        if def.name.as_str() == "__init__" {
-            return_type = String::new();
-        }
-
-        return_type
-    }
-
     fn visit_function_def(&mut self, def: ast::StmtFunctionDef) {
         let name = if def.name.as_str() == "__init__" {
             self.owning_class.clone().unwrap().name.to_string()
@@ -263,7 +256,7 @@ impl TranslationContext {
                 .args
                 .iter()
                 .map(|arg| self.visit_function_decl_arg(arg))
-                .filter(|arg| arg.to_string() != "dynamic self")
+                .filter(|arg| arg.to_string() != "self")
                 .collect::<Vec<_>>()
                 .join(", "),
             self.indent(),
@@ -274,6 +267,34 @@ impl TranslationContext {
         mem::swap(&mut self.owning_function, &mut Some(def.clone()));
 
         println!("{}}}\n", self.indent());
+    }
+
+    fn function_return_type(&mut self, def: &ast::StmtFunctionDef) -> String {
+        if def.name.as_str() == "__init__" {
+            return String::new();
+        }
+
+        let return_type_str = self.visit_expr(*def.clone().returns.unwrap());
+
+        return self.type_to_csharp(return_type_str);
+    }
+
+    fn type_to_csharp(&mut self, type_name: String) -> String {
+        let result = match type_name.clone().as_str() {
+            "None" => "void".to_owned(),
+            "null" => "void".to_owned(),
+            "int" => "long".to_owned(),
+            "bool" => "bool".to_owned(),
+            "Node" => "Node".to_owned(),
+            "str" => "string".to_owned(),
+            "NodeType" => "NodeType".to_owned(),
+            _ => {
+                dbg!(type_name);
+                todo!()
+            }
+        };
+
+        return result;
     }
 
     fn visit_assign(&mut self, def: ast::StmtAssign) {
