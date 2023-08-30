@@ -678,8 +678,7 @@ fn op_to_string(op: Operator) -> &'static str {
         Operator::BitOr => "|",
         Operator::BitXor => "^",
         Operator::BitAnd => "&",
-        // C# does not have a floor division operator
-        Operator::FloorDiv => "FLOOR_DIVIDE",
+        Operator::FloorDiv => "/",
     }
 }
 
