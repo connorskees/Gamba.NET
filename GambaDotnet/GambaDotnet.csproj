@@ -6,6 +6,10 @@
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
+  
+  <PropertyGroup>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Antlr4" Version="4.6.5">
@@ -19,6 +23,7 @@
     <PackageReference Include="Antlr4.Runtime" Version="4.6.6" />
     <PackageReference Include="Microsoft.Z3" Version="4.12.2" />
   </ItemGroup>
+  
   
 
   <ItemGroup>

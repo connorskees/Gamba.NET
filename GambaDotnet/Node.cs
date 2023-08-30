@@ -38,7 +38,7 @@ namespace GambaDotnet
 
         public bool modRed;
 
-        public List<Node> children = new();
+        public List<Node> children;
 
         public string vname = "";
 
@@ -67,11 +67,12 @@ namespace GambaDotnet
         /// </summary>
         public static bool are_all_children_contained(List<Node> l1, List<Node> l2) => l1.Except(l2).Any();
 
-        public Node(NodeType type, ulong modulus, bool modRed)
+        public Node(NodeType type, ulong modulus, bool modRed, int childCount = 2)
         {
             this.type = type;
             this.modulus = modulus;
             this.modRed = modRed;
+            this.children = new(childCount);
         }
 
         public Node(NodeType type, ulong modulus, bool modRed, params Node[] nodes)

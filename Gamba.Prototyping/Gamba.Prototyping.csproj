@@ -7,6 +7,11 @@
     <Nullable>enable</Nullable>
     <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
+  
+  <PropertyGroup>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="..\GambaDotnet\GambaDotnet.csproj" />
