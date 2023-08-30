@@ -108,7 +108,7 @@ impl TranslationContext {
 
     fn visit_assert(&mut self, assert_stmt: ast::StmtAssert) {
         println!(
-            "{}assert({});",
+            "{}Assert.True({});",
             self.indent(),
             self.visit_expr(*assert_stmt.test)
         );
@@ -117,6 +117,8 @@ impl TranslationContext {
     fn visit_return_stmt(&mut self, return_stmt: ast::StmtReturn) {
         if let Some(value) = return_stmt.value {
             println!("{}return {};", self.indent(), self.visit_expr(*value));
+        } else {
+            println!("{}return;", self.indent());
         }
     }
 
@@ -261,7 +263,7 @@ impl TranslationContext {
                 .args
                 .iter()
                 .map(|arg| self.visit_function_decl_arg(arg))
-                .filter(|arg| arg.to_string() != "self")
+                .filter(|arg| arg.to_string() != "dynamic self")
                 .collect::<Vec<_>>()
                 .join(", "),
             self.indent(),
@@ -397,7 +399,6 @@ impl TranslationContext {
             },
             ast::Expr::Call(call_expr) => {
                 let mut name = self.visit_expr(*call_expr.func);
-                name = name.replace("insert", "Insert");
                 name = name.replace("re.match", "reutil.match");
 
                 // TODO: Refactor into helper method.
@@ -421,7 +422,7 @@ impl TranslationContext {
 
                 if name == "len" && call_expr.args.len() == 1 {
                     format!(
-                        "{}.Length",
+                        "{}.Count()",
                         call_expr
                             .args
                             .into_iter()

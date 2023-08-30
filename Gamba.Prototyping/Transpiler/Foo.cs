@@ -548,7 +548,7 @@ namespace Gamba.Prototyping.Transpiler
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public char __peek()
         {
-            if (this.__idx >= this.__expr.Length)
+            if (this.__idx >= this.__expr.Count())
             {
                 return '@';
             }
