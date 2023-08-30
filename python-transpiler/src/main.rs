@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::format,
     mem,
 };
 
@@ -24,15 +23,6 @@ pub struct TranslationContext {
 }
 
 impl TranslationContext {
-    fn writeln(&mut self, s: impl AsRef<str>) {
-        self.output += s.as_ref();
-        self.output.push('\n');
-    }
-
-    fn write(&mut self, s: impl AsRef<str>) {
-        self.output += s.as_ref();
-    }
-
     fn indent(&self) -> String {
         vec![" "; self.indentation * 4].join("")
     }
@@ -63,8 +53,8 @@ impl TranslationContext {
             ast::Stmt::Delete(_) => todo!(),
             ast::Stmt::TypeAlias(_) => todo!(),
             ast::Stmt::AugAssign(def) => self.visit_aug_assign(def),
-            ast::Stmt::AnnAssign(def) => todo!(),
-            ast::Stmt::For(_) => todo!(),
+            ast::Stmt::AnnAssign(_) => todo!(),
+            ast::Stmt::For(for_stmt) => self.visit_for(for_stmt),
             ast::Stmt::AsyncFor(_) => todo!(),
             ast::Stmt::While(while_stmt) => self.visit_while_stmt(while_stmt),
             ast::Stmt::If(if_stmt) => self.visit_if_stmt(if_stmt),
@@ -72,11 +62,11 @@ impl TranslationContext {
             ast::Stmt::AsyncWith(_) => todo!(),
             ast::Stmt::Match(_) => todo!(),
             ast::Stmt::Raise(_) => todo!(),
-            ast::Stmt::Try(_) => todo!(),
+            ast::Stmt::Try(try_stmt) => self.visit_try(try_stmt),
             ast::Stmt::TryStar(_) => todo!(),
             ast::Stmt::Assert(_) => todo!(),
-            ast::Stmt::Import(_) => todo!(),
-            ast::Stmt::ImportFrom(_) => todo!(),
+            ast::Stmt::Import(_) => {}
+            ast::Stmt::ImportFrom(_) => {}
             ast::Stmt::Global(_) => todo!(),
             ast::Stmt::Nonlocal(_) => todo!(),
             ast::Stmt::Expr(stmt_expr) => self.visit_stmt_expr(stmt_expr),
@@ -86,6 +76,26 @@ impl TranslationContext {
         }
     }
 
+    fn visit_for(&mut self, for_stmt: ast::StmtFor) {
+        todo!("for loop")
+    }
+
+    fn visit_try(&mut self, try_stmt: ast::StmtTry) {
+        println!("{}try {{", self.indent());
+        self.visit_body(try_stmt.body);
+        if !try_stmt.orelse.is_empty() {
+            println!("{}}} catch {{", self.indent());
+            self.visit_body(try_stmt.orelse);
+        }
+
+        if !try_stmt.finalbody.is_empty() {
+            println!("{}}} finally {{", self.indent());
+            self.visit_body(try_stmt.finalbody);
+        }
+
+        println!("{}}}", self.indent());
+    }
+
     fn visit_return_stmt(&mut self, return_stmt: ast::StmtReturn) {
         if let Some(value) = return_stmt.value {
             println!("{}return {};", self.indent(), self.visit_expr(*value));
@@ -93,82 +103,129 @@ impl TranslationContext {
     }
 
     fn visit_if_stmt(&mut self, if_stmt: ast::StmtIf) {
-        (println!(
+        println!(
             "{}if ({}) {{",
             self.indent(),
             self.visit_expr(*if_stmt.test)
-        ));
+        );
         self.visit_body(if_stmt.body);
-        (print!("{}}}", self.indent()));
+        print!("{}}}", self.indent());
         if if_stmt.orelse.is_empty() {
             println!("")
         } else {
-            (println!(" else {{"));
+            println!(" else {{");
             self.visit_body(if_stmt.orelse);
-            (println!("{}}}", self.indent()));
+            println!("{}}}", self.indent());
         }
     }
 
     fn visit_while_stmt(&mut self, while_stmt: ast::StmtWhile) {
-        (println!(
+        println!(
             "{}while ({}) {{",
             self.indent(),
             self.visit_expr(*while_stmt.test)
-        ));
+        );
         self.visit_body(while_stmt.body);
-        (println!("{}}}", self.indent()));
+        println!("{}}}", self.indent());
     }
 
     fn visit_stmt_expr(&mut self, expr: ast::StmtExpr) {
-        (println!("{}{};", self.indent(), self.visit_expr(*expr.value)));
+        println!("{}{};", self.indent(), self.visit_expr(*expr.value));
     }
 
     fn visit_class_def(&mut self, def: ast::StmtClassDef) {
-        (println!("public class {}\n{}{{", def.clone().name, self.indent()));
+        println!("public class {}\n{}{{", def.clone().name, self.indent());
 
         mem::swap(&mut self.owning_class, &mut Some(def.clone()));
         self.visit_body(def.clone().body);
         mem::swap(&mut self.owning_class, &mut Some(def.clone()));
 
-        (println!("{}}}\n", self.indent()))
+        println!("{}}}\n", self.indent())
     }
 
     fn visit_function_decl_arg(&mut self, arg: &ast::ArgWithDefault) -> String {
-        arg.as_arg().arg.to_string()
+        let ty = self.expr_type(arg.default.clone());
+        let name = arg.as_arg().arg.to_string();
+        let default = arg
+            .default
+            .as_ref()
+            .map(|default| format!("={}", self.visit_expr(*default.clone())));
+
+        if let Some(default) = default {
+            format!("{ty} {name}{default}")
+        } else {
+            format!("dynamic {name}")
+        }
     }
 
-    fn visit_function_def(&mut self, def: ast::StmtFunctionDef) {
-        // Check if the function should have a 'void' or 'dynamic' type.
-        let mut return_type: String = String::from("void ");
+    fn expr_type(&mut self, expr: Option<Box<ast::Expr>>) -> String {
+        let expr = match expr {
+            Some(e) => *e,
+            None => return "void".to_owned(),
+        };
+
+        match expr {
+            ast::Expr::BoolOp(_) => "bool",
+            ast::Expr::Compare(_) => "bool",
+            ast::Expr::Call(call_expr) => {
+                let name = self.visit_expr(*call_expr.func);
+                match name.as_str() {
+                    "Node" => "Node",
+                    _ => "dynamic",
+                }
+            }
+            ast::Expr::Constant(constant) => match constant.value {
+                ast::Constant::None => todo!(),
+                ast::Constant::Bool(_) => "bool",
+                ast::Constant::Str(_) => "string",
+                ast::Constant::Bytes(_) => todo!(),
+                ast::Constant::Int(_) => "ulong",
+                ast::Constant::Tuple(_) => todo!(),
+                ast::Constant::Float(_) => "float",
+                ast::Constant::Complex { .. } => todo!(),
+                ast::Constant::Ellipsis => todo!(),
+            },
+            ast::Expr::Name(name_expr) => match name_expr.id.as_str() {
+                "node" | "prod" => "Node",
+                _ => "dynamic",
+            },
+            _ => "dynamic",
+        }
+        .to_owned()
+    }
+
+    fn function_return_type(&mut self, def: &ast::StmtFunctionDef) -> String {
+        let mut return_type = "void ".to_owned();
         for stmt in def.body.iter() {
             match stmt {
                 ast::Stmt::Return(def) => {
-                    let to_str = self.visit_expr(*def.clone().value.unwrap());
-                    if (!def.value.is_some()) {
-                        return_type = String::from("void ")
-                    } else if (to_str.starts_with("Node") || to_str.starts_with("node")) {
-                        return_type = String::from("Node ");
-                    } else {
-                        return_type = String::from("dynamic ");
-                    }
+                    return_type = self.expr_type(def.value.clone());
+                    break;
                 }
                 _ => {}
             }
         }
 
-        let mut name = def.name.to_string();
-        let is_constructor = def.name == String::from("__init__");
-        if (is_constructor) {
-            name = self.owning_class.clone().unwrap().name.to_string();
-            return_type = String::from("");
+        if def.name.as_str() == "__init__" {
+            return_type = String::new();
         }
 
-        (println!(
-            "{}public {}{}({})\n{}{{",
+        return_type
+    }
+
+    fn visit_function_def(&mut self, def: ast::StmtFunctionDef) {
+        let name = if def.name.as_str() == "__init__" {
+            self.owning_class.clone().unwrap().name.to_string()
+        } else {
+            def.name.to_string()
+        };
+
+        let return_type = self.function_return_type(&def);
+        println!(
+            "{}public {} {}({})\n{}{{",
             self.indent(),
             return_type,
             name,
-            // doesn't handle kwargs or default values
             def.args
                 .args
                 .iter()
@@ -177,30 +234,29 @@ impl TranslationContext {
                 .collect::<Vec<_>>()
                 .join(", "),
             self.indent(),
-        ));
+        );
 
         mem::swap(&mut self.owning_function, &mut Some(def.clone()));
         self.visit_body(def.clone().body);
         mem::swap(&mut self.owning_function, &mut Some(def.clone()));
 
-        (println!("{}}}\n", self.indent()));
+        println!("{}}}\n", self.indent());
     }
 
     fn visit_assign(&mut self, def: ast::StmtAssign) {
         assert_eq!(def.targets.len(), 1, "too many assignment targets");
 
-        // dbg!(def.clone());
         let target = def.targets.first().unwrap();
 
-        let mut var_name: String = String::new();
-        match target {
+        let var_name = match target {
             // Match self.instance_variable
             ast::Expr::Attribute(def) => {
-                var_name = format!(
+                let value = def.clone().value.expect_name_expr().id.to_string();
+                format!(
                     "{}.{}",
-                    def.clone().value.expect_name_expr().id.to_string(),
+                    Self::self_to_this(value),
                     def.clone().attr.to_string()
-                );
+                )
             }
 
             // Match "local_variable ="
@@ -218,25 +274,21 @@ impl TranslationContext {
                         .get_mut(&owning_function.range)
                         .unwrap();
 
-                    is_first_definition = if (map.contains(&def.id.to_string())) {
-                        false
-                    } else {
-                        true
-                    };
+                    is_first_definition = !map.contains(&def.id.to_string());
 
-                    if (is_first_definition) {
+                    if is_first_definition {
                         map.insert(def.id.to_string());
                     }
                 }
 
-                var_name = format!(
+                format!(
                     "{}",
                     if is_first_definition {
                         format!("var {}", def.id.to_string())
                     } else {
                         def.id.to_string()
                     }
-                );
+                )
             }
             _ => todo!(
                 "Unexpected assignment destination type: {}",
@@ -245,17 +297,17 @@ impl TranslationContext {
         };
 
         // Print "var = "
-        (println!(
+        println!(
             "{}{} = {};",
             self.indent(),
             var_name,
             self.visit_expr(*def.value)
-        ));
+        );
     }
 
     fn visit_aug_assign(&mut self, def: ast::StmtAugAssign) {
         println!(
-            "{}{} {}= {}",
+            "{}{} {}= {};",
             self.indent(),
             self.visit_expr(*def.target),
             op_to_string(def.op),
@@ -274,16 +326,17 @@ impl TranslationContext {
                 ast::Constant::Int(v) => v.to_string(),
                 ast::Constant::Tuple(_) => todo!(),
                 ast::Constant::Float(v) => v.to_string(),
-                ast::Constant::Complex { real, imag } => todo!(),
+                ast::Constant::Complex { .. } => todo!(),
                 ast::Constant::Ellipsis => todo!(),
             },
             ast::Expr::Call(call_expr) => {
                 let mut name = self.visit_expr(*call_expr.func);
                 name = name.replace("append", "Add");
                 name = name.replace("insert", "Insert");
+                name = name.replace("re.match", "reutil.match");
                 if name == "len" && call_expr.args.len() == 1 {
                     format!(
-                        "{}.length",
+                        "{}.Length",
                         call_expr
                             .args
                             .into_iter()
@@ -309,7 +362,11 @@ impl TranslationContext {
                 }
             }
             ast::Expr::Attribute(attr_expr) => {
-                format!("{}.{}", self.visit_expr(*attr_expr.value), attr_expr.attr)
+                format!(
+                    "{}.{}",
+                    Self::self_to_this(self.visit_expr(*attr_expr.value)),
+                    attr_expr.attr
+                )
             }
             ast::Expr::BoolOp(def) => {
                 format!(
@@ -318,11 +375,7 @@ impl TranslationContext {
                         .into_iter()
                         .map(|expr| self.visit_expr(expr))
                         .collect::<Vec<_>>()
-                        .join(if def.op == BoolOp::And {
-                            " && "
-                        } else {
-                            " || "
-                        })
+                        .join(&format!(" {} ", bool_op_to_string(def.op)))
                 )
 
                 /*
@@ -342,26 +395,23 @@ impl TranslationContext {
                     "too many or too few comparison operators (e.g. <=)"
                 );
 
-                let op = def.ops[0];
-                if (op == CmpOp::NotIn) {
-                    format!(
+                match def.ops[0] {
+                    CmpOp::NotIn => format!(
                         "!(({}).Contains({}))",
                         self.visit_expr(def.comparators[0].clone()),
                         self.visit_expr(*def.left)
-                    )
-                } else if (op == CmpOp::In) {
-                    format!(
+                    ),
+                    CmpOp::In => format!(
                         "(({}).Contains({}))",
                         self.visit_expr(def.comparators[0].clone()),
                         self.visit_expr(*def.left)
-                    )
-                } else {
-                    format!(
+                    ),
+                    op => format!(
                         "{} {} {}",
                         self.visit_expr(*def.left),
                         cmp_to_string(op),
                         self.visit_expr(def.comparators[0].clone())
-                    )
+                    ),
                 }
             }
             ast::Expr::BinOp(def) => {
@@ -392,11 +442,19 @@ impl TranslationContext {
             }
 
             ast::Expr::Subscript(def) => {
-                format!(
-                    "{}[{}]",
-                    self.visit_expr(*def.value),
-                    self.visit_expr(*def.slice)
-                )
+                if def.slice.is_slice_expr() {
+                    format!(
+                        "{}{}",
+                        self.visit_expr(*def.value),
+                        self.visit_expr(*def.slice)
+                    )
+                } else {
+                    format!(
+                        "{}[{}]",
+                        self.visit_expr(*def.value),
+                        self.visit_expr(*def.slice)
+                    )
+                }
             }
             ast::Expr::Slice(def) => {
                 //assert_eq!(def.step.is_none(), false);
@@ -482,15 +540,16 @@ fn bool_op_to_string(op: BoolOp) -> &'static str {
 
 fn unary_op_to_string(op: UnaryOp) -> &'static str {
     match op {
-        UnaryOp::Invert => todo!(),
+        UnaryOp::Invert => "~",
         UnaryOp::Not => "!",
-        UnaryOp::UAdd => todo!(),
+        UnaryOp::UAdd => "+",
         UnaryOp::USub => "-",
     }
 }
 
 fn main() {
-    let python_source = std::fs::read_to_string("./src/test.py").unwrap();
+    let file_name = std::env::args().skip(1).next().unwrap();
+    let python_source = std::fs::read_to_string(file_name).unwrap();
 
     let ast = ast::Suite::parse(&python_source, "<embedded>").unwrap();
 

@@ -3,6 +3,7 @@ using Microsoft.Z3;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -25,7 +26,13 @@ namespace Gamba.Prototyping.Transpiler
 
         string __error;
 
-        public Parser(expr, modulus, modRed)
+        private static void Check(Node node)
+        {
+            //if (node.ToString().Contains("Enumerable"))
+                //Debugger.Break();
+        }
+
+        public Parser(string expr, ulong modulus, bool modRed = false)
         {
             this.__expr = expr;
             var foobar = expr;
@@ -42,11 +49,11 @@ namespace Gamba.Prototyping.Transpiler
                 this.__skip_space();
             }
             var root = this.__parse_inclusive_disjunction();
-            while ((this.__idx < this.__expr.length && this.__has_space()))
+            while ((this.__idx < this.__expr.Length && this.__has_space()))
             {
                 this.__skip_space();
             }
-            if (this.__idx != this.__expr.length)
+            if (this.__idx != this.__expr.Length)
             {
                 this.__error = "Finished near to " + this.__peek() + " before everything was parsed";
                 return null;
@@ -54,7 +61,7 @@ namespace Gamba.Prototyping.Transpiler
             return root;
         }
 
-        public dynamic __new_node(NodeType t)
+        public Node __new_node(NodeType t)
         {
             return new Node(t, this.__modulus, this.__modRed);
         }
@@ -62,6 +69,7 @@ namespace Gamba.Prototyping.Transpiler
         public Node __parse_inclusive_disjunction()
         {
             var child = this.__parse_exclusive_disjunction();
+            Check(child);
             if (child == null)
             {
                 return null;
@@ -75,7 +83,7 @@ namespace Gamba.Prototyping.Transpiler
             while (this.__peek() == "|")
             {
                 this.__get();
-                var child = this.__parse_exclusive_disjunction();
+                child = this.__parse_exclusive_disjunction();
                 if (child == null)
                 {
                     return null;
@@ -88,6 +96,7 @@ namespace Gamba.Prototyping.Transpiler
         public Node __parse_exclusive_disjunction()
         {
             var child = this.__parse_conjunction();
+            Check(child);
             if (child == null)
             {
                 return null;
@@ -101,7 +110,7 @@ namespace Gamba.Prototyping.Transpiler
             while (this.__peek() == "^")
             {
                 this.__get();
-                var child = this.__parse_conjunction();
+                child = this.__parse_conjunction();
                 if (child == null)
                 {
                     return null;
@@ -114,6 +123,7 @@ namespace Gamba.Prototyping.Transpiler
         public Node __parse_conjunction()
         {
             var child = this.__parse_shift();
+            Check(child);
             if (child == null)
             {
                 return null;
@@ -127,7 +137,7 @@ namespace Gamba.Prototyping.Transpiler
             while (this.__peek() == "&")
             {
                 this.__get();
-                var child = this.__parse_shift();
+                child = this.__parse_shift();
                 if (child == null)
                 {
                     return null;
@@ -137,19 +147,20 @@ namespace Gamba.Prototyping.Transpiler
             return node;
         }
 
-        public dynamic __parse_shift()
+        public Node __parse_shift()
         {
-            var base = this.__parse_sum();
-            if (base == null)
+            var _base = this.__parse_sum();
+            Check(_base);
+            if (_base == null)
             {
                 return null;
             }
             if (!(this.__has_lshift()))
             {
-                return base;
+                return _base;
             }
             var prod = this.__new_node(NodeType.PRODUCT);
-            prod.children.Add(base);
+            prod.children.Add(_base);
             this.__get();
             this.__get();
             var op = this.__parse_sum();
@@ -174,6 +185,7 @@ namespace Gamba.Prototyping.Transpiler
         public Node __parse_sum()
         {
             var child = this.__parse_product();
+            Check(child);
             if (child == null)
             {
                 return null;
@@ -188,7 +200,7 @@ namespace Gamba.Prototyping.Transpiler
             {
                 var negative = this.__peek() == "-";
                 this.__get();
-                var child = this.__parse_product();
+                child = this.__parse_product();
                 if (child == null)
                 {
                     return null;
@@ -208,6 +220,7 @@ namespace Gamba.Prototyping.Transpiler
         public Node __parse_product()
         {
             var child = this.__parse_factor();
+            Check(child);
             if (child == null)
             {
                 return null;
@@ -221,7 +234,7 @@ namespace Gamba.Prototyping.Transpiler
             while (this.__has_multiplicator())
             {
                 this.__get();
-                var child = this.__parse_factor();
+                child = this.__parse_factor();
                 if (child == null)
                 {
                     return null;
@@ -231,7 +244,7 @@ namespace Gamba.Prototyping.Transpiler
             return node;
         }
 
-        public dynamic __parse_factor()
+        public Node __parse_factor()
         {
             if (this.__has_bitwise_negated_expression())
             {
@@ -249,18 +262,20 @@ namespace Gamba.Prototyping.Transpiler
             this.__get();
             var node = this.__new_node(NodeType.NEGATION);
             var child = this.__parse_factor();
+            Check(child);
             if (child == null)
             {
                 return null;
             }
-            node.children = new List<dynamic>() { child };
+            node.children = new List<Node>() { child };
             return node;
         }
 
-        public dynamic __parse_negative_expression()
+        public Node __parse_negative_expression()
         {
             this.__get();
             var node = this.__parse_factor();
+            Check(node);
             if (node == null)
             {
                 return null;
@@ -268,48 +283,51 @@ namespace Gamba.Prototyping.Transpiler
             return this.__multiply_by_minus_one(node);
         }
 
-        public dynamic __multiply_by_minus_one(node)
+        public Node __multiply_by_minus_one(Node node)
         {
             if (node.type == NodeType.CONSTANT)
             {
-                node.constant = -(node.constant);
+                node.constant = 0-(node.constant);
                 return node;
             }
             if (node.type == NodeType.PRODUCT)
             {
                 if (node.children[0].type == NodeType.CONSTANT)
                 {
-                    node.children[0].constant *= -(1)
+                    node.children[0].constant *= ulong.MaxValue;
                     return node;
                 }
                 var minusOne = this.__new_node(NodeType.CONSTANT);
-                minusOne.constant = -(1);
+                minusOne.constant = ulong.MaxValue;
                 node.children.Insert(0, minusOne);
                 return node;
             }
-            var minusOne = this.__new_node(NodeType.CONSTANT);
-            minusOne.constant = -(1);
+            var minus1 = this.__new_node(NodeType.CONSTANT);
+            minus1.constant = ulong.MaxValue;
             var prod = this.__new_node(NodeType.PRODUCT);
-            prod.children = new List<dynamic>() { minusOne, node };
+            prod.children = new List<Node>() { minus1, node };
             return prod;
         }
 
         public Node __parse_power()
         {
-            var base = this.__parse_terminal();
-            if (base == null)
+            var _base = this.__parse_terminal();
+            Check(_base);
+            if (_base == null)
             {
                 return null;
             }
             if (!(this.__has_power()))
             {
-                return base;
+                return _base;
             }
             var node = this.__new_node(NodeType.POWER);
-            node.children.Add(base);
+            Check(node);
+            node.children.Add(_base);
             this.__get();
             this.__get();
             var exp = this.__parse_terminal();
+            Check(exp);
             if (exp == null)
             {
                 return null;
@@ -323,7 +341,7 @@ namespace Gamba.Prototyping.Transpiler
             return node;
         }
 
-        public dynamic __parse_terminal()
+        public Node __parse_terminal()
         {
             if (this.__peek() == "(")
             {
@@ -380,11 +398,13 @@ namespace Gamba.Prototyping.Transpiler
                 }
             }
             var node = this.__new_node(NodeType.VARIABLE);
-            node.vname = this.__expr[.Slice(start, this.__idx, null)].rstrip();
+            //node.vname = this.__expr.Slice(start, this.__idx, null).rstrip();
+            node.vname = new String(__expr.Skip(start).Take(this.__idx - start).ToArray());
+            Check(node);
             return node;
         }
 
-        public dynamic __parse_constant()
+        public Node __parse_constant()
         {
             if (this.__has_binary_constant())
             {
@@ -464,15 +484,17 @@ namespace Gamba.Prototyping.Transpiler
             return node;
         }
 
-        public dynamic __get_constant(start, base)
+        public ulong __get_constant(int start, int __base)
         {
-            return int(this.__expr[.Slice(start, this.__idx, null)].rstrip(), base);
+            var slice = new String(this.__expr.Skip(start).Take(Math.Abs(start - this.__idx)).ToArray());
+            return Convert.ToUInt64(slice);
+            //return Convert.ToInt32((this.__expr.Slice(start, this.__idx, null).rstrip(), __base));
         }
 
-        public dynamic __get(skipSpace)
+        public string __get(bool skipSpace = true)
         {
             var c = this.__peek();
-            this.__idx += 1
+            this.__idx += 1;
             if (skipSpace)
             {
                 while (this.__has_space())
@@ -480,66 +502,71 @@ namespace Gamba.Prototyping.Transpiler
                     this.__skip_space();
                 }
             }
+            if (c.Contains("Enumerable"))
+                Debugger.Break();
             return c;
         }
 
         public void __skip_space()
         {
-            this.__idx += 1
+            this.__idx += 1;
         }
 
-        public dynamic __peek()
+        public string __peek()
         {
-            if (this.__idx >= this.__expr.length)
+            if (this.__idx >= this.__expr.Length)
             {
                 return "";
             }
-            return this.__expr[this.__idx];
+            var result = this.__expr[this.__idx].ToString();
+            if (result.Contains("Enumerable"))
+                Debugger.Break();
+            return result;
         }
 
-        public dynamic __has_bitwise_negated_expression()
+        public bool __has_bitwise_negated_expression()
         {
             return this.__peek() == "~";
         }
 
-        public dynamic __has_negative_expression()
+        public bool __has_negative_expression()
         {
             return this.__peek() == "-";
         }
 
-        public dynamic __has_multiplicator()
+        public bool __has_multiplicator()
         {
             return (this.__peek() == "*" && this.__peek_next() != "*");
         }
 
-        public dynamic __has_power()
+        public bool __has_power()
         {
             return (this.__peek() == "*" && this.__peek_next() == "*");
         }
 
-        public dynamic __has_lshift()
+        public bool __has_lshift()
         {
             return (this.__peek() == "<" && this.__peek_next() == "<");
         }
 
-        public dynamic __has_binary_constant()
+        public bool __has_binary_constant()
         {
             return (this.__peek() == "0" && this.__peek_next() == "b");
         }
 
-        public dynamic __has_hex_constant()
+        public bool __has_hex_constant()
         {
             return (this.__peek() == "0" && this.__peek_next() == "x");
         }
 
-        public dynamic __has_hex_digit()
+        public bool __has_hex_digit()
         {
-            return (this.__has_decimal_digit() || re.match("[a-fA-F]", this.__peek()));
+            return (this.__has_decimal_digit() || reutil.match("[a-fA-F]", this.__peek()));
         }
 
         public dynamic __has_decimal_digit()
         {
-            return re.match("[0-9]", this.__peek());
+            return reutil.match("[0-9]", this.__peek());
         }
 
         public dynamic __has_variable()
@@ -549,21 +576,21 @@ namespace Gamba.Prototyping.Transpiler
 
         public dynamic __has_letter()
         {
-            return re.match("[a-zA-Z]", this.__peek());
+            return reutil.match("[a-zA-Z]", this.__peek());
         }
 
-        public dynamic __has_space()
+        public bool __has_space()
         {
             return this.__peek() == " ";
         }
 
-        public dynamic __peek_next()
+        public string __peek_next()
         {
-            if (this.__idx >= this.__expr.length - 1)
+            if (this.__idx >= this.__expr.Length - 1)
             {
                 return "";
             }
-            return this.__expr[this.__idx + 1];
+            return this.__expr[this.__idx + 1].ToString();
         }
     }
 }

@@ -127,7 +127,7 @@ namespace GambaDotnet
                         // Rather than multiplying by -1, only use the minus and get rid
                         // of '1*'.
                         if (ret1 == "-1" && children.Count > 1 && end > 1)
-                            ret = "-" + ret.Skip(3);
+                            ret = "-" + new String(ret.Skip(3).ToArray());
 
                         return parenthesize(ret);
                     }
