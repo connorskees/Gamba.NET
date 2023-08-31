@@ -1,4 +1,5 @@
-﻿using GambaDotnet;
+﻿using Gamba.Prototyping.Extensions;
+using GambaDotnet;
 using Microsoft.Z3;
 using System;
 using System.Collections;
@@ -19,7 +20,7 @@ namespace Gamba.Prototyping.Transpiler
     {
         string __expr;
 
-        ulong __modulus;
+        long __modulus;
 
         bool __modRed;
 
@@ -27,10 +28,9 @@ namespace Gamba.Prototyping.Transpiler
 
         string __error;
 
-        public Parser(string expr, ulong modulus, bool modRed = false)
+        public Parser(string expr, long modulus, bool modRed = false)
         {
             this.__expr = expr;
-            var foobar = expr;
             this.__modulus = modulus;
             this.__modRed = modRed;
             this.__idx = 0;
@@ -39,18 +39,16 @@ namespace Gamba.Prototyping.Transpiler
 
         public Node parse_expression()
         {
-            __idx = 0;
-            this.__error = "";
             if (this.__has_space())
             {
                 this.__skip_space();
             }
             var root = this.__parse_inclusive_disjunction();
-            while ((this.__idx < this.__expr.Length && this.__has_space()))
+            while ((this.__idx < this.__expr.Count() && this.__has_space()))
             {
                 this.__skip_space();
             }
-            if (this.__idx != this.__expr.Length)
+            if (this.__idx != this.__expr.Count())
             {
                 this.__error = "Finished near to " + this.__peek() + " before everything was parsed";
                 return null;
@@ -60,27 +58,7 @@ namespace Gamba.Prototyping.Transpiler
 
         public Node __new_node(NodeType t)
         {
-            int childCount = 0;
-            switch(t)
-            {
-                case NodeType.CONSTANT:
-                case NodeType.VARIABLE:
-                    childCount = 0;
-                    break;
-                case NodeType.NEGATION:
-                    childCount = 1;
-                    break;
-                case NodeType.POWER:
-                case NodeType.PRODUCT:
-                case NodeType.SUM:
-                case NodeType.CONJUNCTION:
-                case NodeType.EXCL_DISJUNCTION:
-                case NodeType.INCL_DISJUNCTION:
-                    childCount = 2;
-                    break;
-            }
-
-            return new Node(t, this.__modulus, this.__modRed, childCount);
+            return new Node(t, this.__modulus, this.__modRed);
         }
 
         public Node __parse_inclusive_disjunction()
@@ -90,13 +68,13 @@ namespace Gamba.Prototyping.Transpiler
             {
                 return null;
             }
-            if (this.__peek() != '|')
+            if (this.__peek() != "|")
             {
                 return child;
             }
             var node = this.__new_node(NodeType.INCL_DISJUNCTION);
             node.children.Add(child);
-            while (this.__peek() == '|')
+            while (this.__peek() == "|")
             {
                 this.__get();
                 child = this.__parse_exclusive_disjunction();
@@ -116,13 +94,13 @@ namespace Gamba.Prototyping.Transpiler
             {
                 return null;
             }
-            if (this.__peek() != '^')
+            if (this.__peek() != "^")
             {
                 return child;
             }
             var node = this.__new_node(NodeType.EXCL_DISJUNCTION);
             node.children.Add(child);
-            while (this.__peek() == '^')
+            while (this.__peek() == "^")
             {
                 this.__get();
                 child = this.__parse_conjunction();
@@ -142,13 +120,13 @@ namespace Gamba.Prototyping.Transpiler
             {
                 return null;
             }
-            if (this.__peek() != '&')
+            if (this.__peek() != "&")
             {
                 return child;
             }
             var node = this.__new_node(NodeType.CONJUNCTION);
             node.children.Add(child);
-            while (this.__peek() == '&')
+            while (this.__peek() == "&")
             {
                 this.__get();
                 child = this.__parse_shift();
@@ -202,15 +180,15 @@ namespace Gamba.Prototyping.Transpiler
             {
                 return null;
             }
-            if ((this.__peek() != '+' && this.__peek() != '-'))
+            if ((this.__peek() != "+" && this.__peek() != "-"))
             {
                 return child;
             }
             var node = this.__new_node(NodeType.SUM);
             node.children.Add(child);
-            while ((this.__peek() == '+' || this.__peek() == '-'))
+            while ((this.__peek() == "+" || this.__peek() == "-"))
             {
-                var negative = this.__peek() == '-';
+                var negative = this.__peek() == "-";
                 this.__get();
                 child = this.__parse_product();
                 if (child == null)
@@ -271,13 +249,13 @@ namespace Gamba.Prototyping.Transpiler
         public Node __parse_bitwise_negated_expression()
         {
             this.__get();
+            var node = this.__new_node(NodeType.NEGATION);
             var child = this.__parse_factor();
             if (child == null)
             {
                 return null;
             }
-            var node = new Node(NodeType.NEGATION, __modulus, __modRed, 1);
-            node.children.Add(child);
+            node.children = new List<Node>() { child };
             return node;
         }
 
@@ -296,27 +274,24 @@ namespace Gamba.Prototyping.Transpiler
         {
             if (node.type == NodeType.CONSTANT)
             {
-                node.constant = 0 - (node.constant);
+                node.constant = -(node.constant);
                 return node;
             }
             if (node.type == NodeType.PRODUCT)
             {
                 if (node.children[0].type == NodeType.CONSTANT)
                 {
-                    node.children[0].constant *= ulong.MaxValue;
+                    node.children[0].constant *= -(1);
                     return node;
                 }
-                var minusOne = this.__new_node(NodeType.CONSTANT);
-                minusOne.constant = ulong.MaxValue;
-                node.children.Insert(0, minusOne);
+                this.__new_node(NodeType.CONSTANT).constant = -(1);
+                node.children.Insert(0, (Node?)this.__new_node(NodeType.CONSTANT));
                 return node;
             }
-            var minus1 = this.__new_node(NodeType.CONSTANT);
-            minus1.constant = ulong.MaxValue;
+            var minusOne = this.__new_node(NodeType.CONSTANT);
+            minusOne.constant = -(1);
             var prod = this.__new_node(NodeType.PRODUCT);
-            prod.children.Add(minus1);
-            prod.children.Add(node);
-            //prod.children = new List<Node>(2) { minus1, node };
+            prod.children = new List<Node>() { minusOne, node };
             return prod;
         }
 
@@ -351,7 +326,7 @@ namespace Gamba.Prototyping.Transpiler
 
         public Node __parse_terminal()
         {
-            if (this.__peek() == '(')
+            if (this.__peek() == "(")
             {
                 this.__get();
                 var node = this.__parse_inclusive_disjunction();
@@ -359,7 +334,7 @@ namespace Gamba.Prototyping.Transpiler
                 {
                     return null;
                 }
-                if (!(this.__peek() == ')'))
+                if (!(this.__peek() == ")"))
                 {
                     this.__error = "Missing closing parentheses near to " + this.__peek();
                     return null;
@@ -378,18 +353,18 @@ namespace Gamba.Prototyping.Transpiler
         {
             var start = this.__idx;
             this.__get(false);
-            while ((this.__has_decimal_digit() || this.__has_letter() || this.__peek() == '_'))
+            while ((this.__has_decimal_digit() || this.__has_letter() || this.__peek() == "_"))
             {
                 this.__get(false);
             }
-            if (this.__peek() == '[')
+            if (this.__peek() == "[")
             {
                 this.__get(false);
                 while (this.__has_decimal_digit())
                 {
                     this.__get(false);
                 }
-                if (this.__peek() == ']')
+                if (this.__peek() == "]")
                 {
                     this.__get();
                 }
@@ -406,9 +381,7 @@ namespace Gamba.Prototyping.Transpiler
                 }
             }
             var node = this.__new_node(NodeType.VARIABLE);
-            //node.vname = this.__expr.Slice(start, this.__idx, null).rstrip();
-            //node.vname = new String(__expr.Skip(start).Take(this.__idx - start).ToArray());
-            node.vname = __expr.Substring(start, Math.Abs(this.__idx - start));
+            node.vname = this.__expr.Slice(start, this.__idx, null).rstrip();
             return node;
         }
 
@@ -425,20 +398,17 @@ namespace Gamba.Prototyping.Transpiler
             return this.__parse_decimal_constant();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool IsZeroOrOne(char s) => s == '0' || s == '1';
-
         public Node __parse_binary_constant()
         {
             this.__get(false);
             this.__get(false);
-            if (!(IsZeroOrOne(this.__peek())))
+            if (!((new List<object>() { "0", "1" }).Contains(this.__peek())))
             {
                 this.__error = "Invalid binary digit near to " + this.__peek();
                 return null;
             }
             var start = this.__idx;
-            while ((IsZeroOrOne(this.__peek())))
+            while (((new List<object>() { "0", "1" }).Contains(this.__peek())))
             {
                 this.__get(false);
             }
@@ -474,31 +444,9 @@ namespace Gamba.Prototyping.Transpiler
             return node;
         }
 
-        private bool IsDigit(char c)
-        {
-            switch(c)
-            {
-                case '0':
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
         public Node __parse_decimal_constant()
         {
-            var character = this.__peek();
-                
-            if (!(IsDigit(character)))
+            if (!(this.__has_decimal_digit()))
             {
                 this.__error = "Expecting constant at " + this.__peek() + ", but no digit around.";
                 return null;
@@ -517,15 +465,12 @@ namespace Gamba.Prototyping.Transpiler
             return node;
         }
 
-        public ulong __get_constant(int start, int __base)
+        public long __get_constant(long start, int _base)
         {
-            //var slice = new String(this.__expr.Skip(start).Take(Math.Abs(start - this.__idx)).ToArray());
-            var slice = __expr.Substring(start, Math.Abs(start - this.__idx));
-            return Convert.ToUInt64(slice);
-            //return Convert.ToInt32((this.__expr.Slice(start, this.__idx, null).rstrip(), __base));
+            return Convert.ToInt32(this.__expr.Slice(start, this.__idx, null).rstrip(), _base);
         }
 
-        public char __get(bool skipSpace = true)
+        public string __get(bool skipSpace = true)
         {
             var c = this.__peek();
             this.__idx += 1;
@@ -539,111 +484,87 @@ namespace Gamba.Prototyping.Transpiler
             return c;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void __skip_space()
         {
             this.__idx += 1;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public char __peek()
+        public string __peek()
         {
             if (this.__idx >= this.__expr.Count())
             {
-                return '@';
+                return "";
             }
-            return this.__expr[this.__idx];
+            return this.__expr[this.__idx].ToString();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_bitwise_negated_expression()
         {
-            return this.__peek() == '~';
+            return this.__peek() == "~";
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_negative_expression()
         {
-            return this.__peek() == '-';
+            return this.__peek() == "-";
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_multiplicator()
         {
-            return (this.__peek() == '*' && this.__peek_next() != '*');
+            return (this.__peek() == "*" && this.__peek_next() != "*");
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_power()
         {
-            return (this.__peek() == '*' && this.__peek_next() == '*');
+            return (this.__peek() == "*" && this.__peek_next() == "*");
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_lshift()
         {
-            return (this.__peek() == '<' && this.__peek_next() == '<');
+            return (this.__peek() == "<" && this.__peek_next() == "<");
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_binary_constant()
         {
-            return (this.__peek() == '0' && this.__peek_next() == 'b');
+            return (this.__peek() == "0" && this.__peek_next() == "b");
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_hex_constant()
         {
-            return (this.__peek() == '0' && this.__peek_next() == 'x');
+            return (this.__peek() == "0" && this.__peek_next() == "x");
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_hex_digit()
         {
-            var c = this.__peek();
-            var isHex = ((c >= '0' && c <= '9') ||
-                 (c >= 'a' && c <= 'f') ||
-                 (c >= 'A' && c <= 'F'));
-
-            return (Char.IsDigit(c) || isHex);
+            return (this.__has_decimal_digit() || reutil.match("[a-fA-F]", this.__peek()));
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_decimal_digit()
         {
-            var character = this.__peek();
-            return Char.IsDigit(character);
-            //return reutil.match("[0-9]", this.__peek().ToString());
+            return reutil.match("[0-9]", this.__peek());
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_variable()
         {
             return this.__has_letter();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_letter()
         {
-            var character = __peek();
-            return Char.IsLetter(character);
-            //return reutil.match("[a-zA-Z]", this.__peek().ToString());
+            return reutil.match("[a-zA-Z]", this.__peek());
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool __has_space()
         {
-            return this.__peek() == ' ';
+            return this.__peek() == " ";
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public char __peek_next()
+        public string __peek_next()
         {
-            if (this.__idx >= this.__expr.Length - 1)
+            if (this.__idx >= this.__expr.Count() - 1)
             {
-                return '@';
+                return "";
             }
-            return this.__expr[this.__idx + 1];
+            return this.__expr[this.__idx + 1].ToString();
         }
     }
 }

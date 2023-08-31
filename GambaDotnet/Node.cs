@@ -34,7 +34,7 @@ namespace GambaDotnet
     {
         public NodeType type;
 
-        public ulong modulus;
+        public long modulus;
 
         public bool modRed;
 
@@ -44,7 +44,7 @@ namespace GambaDotnet
 
         public long __vidx = -1;
 
-        public ulong constant = 0;
+        public long constant = 0;
 
         public NodeState state = NodeState.UNKNOWN;
 
@@ -67,7 +67,7 @@ namespace GambaDotnet
         /// </summary>
         public static bool are_all_children_contained(List<Node> l1, List<Node> l2) => l1.Except(l2).Any();
 
-        public Node(NodeType type, ulong modulus, bool modRed, int childCount = 2)
+        public Node(NodeType type, long modulus, bool modRed, int childCount = 2)
         {
             this.type = type;
             this.modulus = modulus;
@@ -75,7 +75,7 @@ namespace GambaDotnet
             this.children = new(childCount);
         }
 
-        public Node(NodeType type, ulong modulus, bool modRed, params Node[] nodes)
+        public Node(NodeType type, long modulus, bool modRed, params Node[] nodes)
         {
             this.type = type;
             this.modulus = modulus;

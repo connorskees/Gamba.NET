@@ -1,11 +1,14 @@
 use core::panic;
 use std::{
     collections::{HashMap, HashSet},
+    hash::Hash,
     mem,
 };
 
 use rustpython_parser::{
-    ast::{self, BoolOp, CmpOp, Comprehension, Operator, StmtClassDef, StmtFunctionDef, UnaryOp},
+    ast::{
+        self, BoolOp, CmpOp, Comprehension, Expr, Operator, StmtClassDef, StmtFunctionDef, UnaryOp,
+    },
     text_size::TextRange,
     Parse,
 };
@@ -29,7 +32,7 @@ impl TranslationContext {
     }
 
     fn self_to_this(s: String) -> String {
-        if s == "self" {
+        if s == "self" || s == "this" {
             "this".to_owned()
         } else {
             s
@@ -54,7 +57,7 @@ impl TranslationContext {
             ast::Stmt::Delete(def) => self.visit_delete_statement(def),
             ast::Stmt::TypeAlias(_) => todo!(),
             ast::Stmt::AugAssign(def) => self.visit_aug_assign(def),
-            ast::Stmt::AnnAssign(_) => todo!(),
+            ast::Stmt::AnnAssign(def) => self.visit_ann_assign(def),
             ast::Stmt::For(for_stmt) => self.visit_for(for_stmt),
             ast::Stmt::AsyncFor(_) => todo!(),
             ast::Stmt::While(while_stmt) => self.visit_while_stmt(while_stmt),
@@ -185,7 +188,7 @@ impl TranslationContext {
             .map(|default| format!("={}", self.visit_expr(*default.clone())));
 
         if (name == "this" || name == "self") {
-            return format!("{}", "self");
+            return format!("{}", "this");
         }
 
         if arg.clone().def.annotation.is_none() {
@@ -256,11 +259,24 @@ impl TranslationContext {
                 .args
                 .iter()
                 .map(|arg| self.visit_function_decl_arg(arg))
-                .filter(|arg| arg.to_string() != "self")
+                .filter(|arg| arg.to_string() != "this")
                 .collect::<Vec<_>>()
                 .join(", "),
             self.indent(),
         );
+
+        if !self.defined_variables.contains_key(&def.clone().range) {
+            self.defined_variables
+                .insert(def.clone().range, HashSet::new());
+        }
+
+        let mapping = self.defined_variables.get_mut(&def.range).unwrap();
+        for arg in def.clone().args.args {
+            let arg_name = arg.def.arg.to_string();
+            if (!mapping.contains(&arg_name)) {
+                mapping.insert(arg_name.to_string());
+            }
+        }
 
         mem::swap(&mut self.owning_function, &mut Some(def.clone()));
         self.visit_body(def.clone().body);
@@ -282,26 +298,75 @@ impl TranslationContext {
     }
 
     fn type_to_csharp(&mut self, type_name: String) -> String {
-        let result = match type_name.clone().as_str() {
+        let mut result = match type_name.clone().as_str() {
             "None" => "void".to_owned(),
             "null" => "void".to_owned(),
-            "int" => "long".to_owned(),
+            "int" => "int".to_owned(),
+            "i64" => "long".to_owned(),
             "bool" => "bool".to_owned(),
-            "Node" => "Node".to_owned(),
             "str" => "string".to_owned(),
+            "Node" => "Node".to_owned(),
             "NodeType" => "NodeType".to_owned(),
+            "Batch" => "Batch".to_owned(),
+            "IndexWithMultitude" => "IndexWithMultitude".to_owned(),
             "list[str]" => "List<string>".to_owned(),
+            "list[bool]" => "List<bool>".to_owned(),
+            "list[int]" => "List<int>".to_owned(),
+            "list[i64]" => "List<long>".to_owned(),
             "list[Node]" => "List<Node>".to_owned(),
-            "Optional[int]" => "long?".to_owned(),
+            "list[NodeType]" => "List<NodeType>".to_owned(),
+            "list[Any]" => "List<object>".to_owned(),
+            "list[int]" => "List<int>".to_owned(),
+            "list[list[int]]" => "List<List<int>>".to_owned(),
+            "list[tuple[(int, int)]]" => "List<(int, int)>".to_owned(),
+            "list[set[IndexWithMultitude]]" => "List<HashSet<IndexWithMultitude>>".to_owned(),
+            "set[IndexWithMultitude]" => "HashSet<IndexWithMultitude>".to_owned(),
+            "Optional[int]" => "int?".to_owned(),
+            "Optional[bool]" => "bool?".to_owned(),
+            "Optional[i64]" => "long?".to_owned(),
+            "Optional[NodeType]" => "NodeType?".to_owned(),
+            "tuple[(Optional[int], Optional[int])]" => "(int?, int?)".to_owned(),
+            "tuple[(Optional[i64], Optional[i64])]" => "(long?, long?)".to_owned(),
+            "tuple[(Optional[int], Node)]" => "(int?, Node)".to_owned(),
+            "tuple[(Optional[i64], Node)]" => "(long?, Node)".to_owned(),
+            "tuple[(Node, Optional[i64])]" => "(Node, long?)".to_owned(),
+            "Optional[tuple[(int, int)]]" => "(int, int)?".to_owned(),
+            "tuple[(bool, bool, tuple[(int, int, int)])]" => {
+                "(bool, bool, (int, int, int))".to_owned()
+            }
+            "tuple[(bool, bool, tuple[(i64, i64, i64)])]" => {
+                "(bool, bool, (long, long, long))".to_owned()
+            }
+            "tuple[(bool, bool)]" => "(bool, bool)".to_owned(),
+            "tuple[(Node, Optional[int])]" => "(Node, int?)".to_owned(),
+            "tuple[(Node, Optional[int])]" => "(Node, int?)".to_owned(),
             "tuple[(Node, Node)]" => "(Node, Node)".to_owned(),
+            "tuple[(Node, int)]" => "(Node, int)".to_owned(),
+            "tuple[(int, Node)]" => "(int, Node)".to_owned(),
+            "tuple[(int, int, bool)]" => "(int, int, bool)".to_owned(),
+            "tuple[(int, int)]" => "(int, int)".to_owned(),
+            "tuple[(i64, i64)]" => "(long, long)".to_owned(),
+            "tuple[(int, int, int)]" => "(int, int, int)".to_owned(),
+            "tuple[(i64, i64, i64)]" => "(long, long, long)".to_owned(),
+            "tuple[(int, bool, int)]" => "(int, bool, int)".to_owned(),
+            "tuple[(i64, bool, i64)]" => "(i64, bool, i64)".to_owned(),
             "tuple[(list[Node], list[Any], list[IndexWithMultitude])]" => {
                 "(List<Node>, List<object>, List<IndexWithMultitude>)".to_owned()
             }
+            "tuple[(list[Node], list[Any], list[set[IndexWithMultitude]])]" => {
+                "(List<Node>, List<object>, List<HashSet<IndexWithMultitude>>)".to_owned()
+            }
+            "list[tuple[(int, list[int])]]" => "List<(int, List<int>)>".to_owned(),
             _ => {
                 dbg!(type_name);
                 todo!()
             }
         };
+
+        // Wrap nullable integers in our own C# wrapper struct.
+        // This is necessary
+        result = result.replace("long?", "NullableI64");
+        result = result.replace("int?", "NullableI32");
 
         return result;
     }
@@ -311,7 +376,33 @@ impl TranslationContext {
 
         let target = def.targets.first().unwrap();
 
-        let var_name = match target {
+        let value_str = self.visit_expr(*def.clone().value);
+
+        self.process_assign(target.clone(), Option::None, value_str)
+    }
+
+    fn visit_ann_assign(&mut self, def: ast::StmtAnnAssign) {
+        let value_str = self.visit_expr(*def.clone().value.unwrap());
+
+        let ty_str = self.visit_expr(*def.clone().annotation);
+
+        let csharp_ty_str = self.type_to_csharp(ty_str);
+
+        self.process_assign(
+            *def.clone().target.clone(),
+            Option::from(csharp_ty_str),
+            value_str,
+        )
+    }
+
+    fn process_assign(&mut self, target: Expr, assign_type: Option<String>, value: String) {
+        let ty = if assign_type.is_some() {
+            assign_type.unwrap()
+        } else {
+            "var".to_owned()
+        };
+
+        let var_name = match target.clone() {
             // Match self.instance_variable
             ast::Expr::Attribute(def) => {
                 let value = self.visit_expr(*def.clone().value).replace("self", "this");
@@ -329,7 +420,7 @@ impl TranslationContext {
                 format!(
                     "{}",
                     if is_first_definition {
-                        format!("var {}", def.id.to_string())
+                        format!("{} {}", ty, def.id.to_string())
                     } else {
                         def.id.to_string()
                     }
@@ -345,7 +436,8 @@ impl TranslationContext {
                 let context: ast::ExprContextStore = def.ctx.store().unwrap();
 
                 format!(
-                    "var ({})",
+                    "{} ({})",
+                    ty,
                     def.clone()
                         .elts
                         .into_iter()
@@ -356,7 +448,7 @@ impl TranslationContext {
             }
 
             _ => {
-                dbg!(target);
+                dbg!(target.clone());
 
                 todo!(
                     "Unexpected assignment destination type: {}",
@@ -366,12 +458,7 @@ impl TranslationContext {
         };
 
         // Print "var = "
-        println!(
-            "{}{} = {};",
-            self.indent(),
-            var_name,
-            self.visit_expr(*def.value)
-        );
+        println!("{}{} = {};", self.indent(), var_name, value);
     }
 
     fn is_first_time_seeing_var(&mut self, name: String) -> bool {
@@ -450,6 +537,72 @@ impl TranslationContext {
                     name
                 };
 
+                name = if name.ends_with(".index") {
+                    name.replace(".index", ".IndexOf")
+                } else {
+                    name
+                };
+
+                name = if name == "int" {
+                    name.replace("int", "Convert.ToInt32")
+                } else {
+                    name
+                };
+
+                name = if name == "list" {
+                    name.replace("list", "new")
+                } else {
+                    name
+                };
+
+                name = if name == "min" {
+                    name.replace("min", "Math.Min")
+                } else {
+                    name
+                };
+
+                name = if name == "reversed" {
+                    name.replace("reversed", "ListUtil.Reversed")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with(".sort") {
+                    name.replace(".sort", ".Sort")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with(".remove") {
+                    name.replace(".remove", ".Remove")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with(".extend") {
+                    name.replace(".extend", ".AddRange")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with(".pop") {
+                    name.replace(".pop", ".Pop")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with("range") {
+                    name.replace("range", "Range.Get")
+                } else {
+                    name
+                };
+
+                name = if name.ends_with("sys.exit") {
+                    name.replace("sys.exit", "throw new InvalidOperationException")
+                } else {
+                    name
+                };
+
                 if name == "len" && call_expr.args.len() == 1 {
                     format!(
                         "{}.Count()",
@@ -489,7 +642,7 @@ impl TranslationContext {
                     "({})",
                     def.values
                         .into_iter()
-                        .map(|expr| self.visit_expr(expr))
+                        .map(|expr| format!("({})", self.visit_expr(expr)))
                         .collect::<Vec<_>>()
                         .join(&format!(" {} ", bool_op_to_string(def.op)))
                 )
@@ -523,7 +676,7 @@ impl TranslationContext {
                         self.visit_expr(*def.left)
                     ),
                     op => format!(
-                        "{} {} {}",
+                        "({}) {} ({})",
                         self.visit_expr(*def.left),
                         cmp_to_string(op),
                         self.visit_expr(def.comparators[0].clone())
@@ -531,8 +684,19 @@ impl TranslationContext {
                 }
             }
             ast::Expr::BinOp(def) => {
+                // C# does not have a power operator, so we must embed
+                // ** uses into a .Pow() helper method.
+                let op = def.op;
+                if op == Operator::Pow {
+                    return format!(
+                        "LongPower({}, {})",
+                        self.visit_expr(*def.left),
+                        self.visit_expr(*def.right)
+                    );
+                }
+
                 format!(
-                    "{} {} {}",
+                    "(({}) {} ({}))",
                     self.visit_expr(*def.left),
                     op_to_string(def.op),
                     self.visit_expr(*def.right)
@@ -548,7 +712,7 @@ impl TranslationContext {
             // TODO: Handle generators?
             ast::Expr::List(def) => {
                 format!(
-                    "new List<object>() {{ {} }}",
+                    "new () {{ {} }}",
                     def.elts
                         .into_iter()
                         .map(|expr| self.visit_expr(expr))

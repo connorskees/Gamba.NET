@@ -1,6 +1,9 @@
-﻿using System;
+﻿using Gamba.Prototyping.Extensions;
+using GambaDotnet;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -17,6 +20,75 @@ namespace Gamba.Prototyping.Transpiled
 
     public class Node
     {
+        // Some bounds to control performance.
+        const int MAX_CHILDREN_SUMMED_UP = 3;
+        const int MAX_CHILDREN_TO_TRANSFORM_BITW = 5;
+        const int MAX_EXPONENT_TO_EXPAND = 2;
+
+        const int NICE_RANDOM_NUMBER_BOUND = 32;
+        const int SPLIT_FREQ_BITWISE = 1;
+        const int SPLIT_FREQ_OTHERS = 4;
+
+        public static long popcount(long x) => long.PopCount(x);
+
+        // https://stackoverflow.com/a/45225089/6855629
+        // This may not be equivalent to GAMBA's trailing_bits implementation.
+        // TODO: Verify
+        public static long trailing_zeros(long n)
+        {
+            ulong bits = 0;
+            ulong x = (ulong)n;
+
+            if (x != 0)
+            {
+                while ((x & 1) == 0)
+                {
+                    ++bits;
+                    x >>= 1;
+                }
+            }
+            return (long)bits;
+        }
+
+        // TODO: Use an actual power implementation.
+        public static long LongPower(long x, long y)
+        {
+            if (y == 0)
+                return 1;
+            if (y == 1)
+                return x;
+
+            for (long i = 0; i < y; i++)
+            {
+                x = x * x;
+            }
+
+            return x;
+        }
+
+        public static long power(long x, long e, long m)
+        {
+            if (x == 1)
+                return 1;
+
+            long r = 1;
+            for (long i = 0; i < e; i++)
+            {
+                r = (r * x) % m;
+                if (r == 0)
+                    return 0;
+            }
+
+            return r;
+        }
+
+        public static long mod_red(long n, long modulus) => n % modulus;
+
+        public static string str(object obj)
+        {
+            return obj.ToString();
+        }
+
         public enum NodeType
         {
             CONSTANT = 0,
@@ -41,28 +113,28 @@ namespace Gamba.Prototyping.Transpiled
 
         public NodeType type;
 
-        public ulong __modulus;
+        public long __modulus;
 
         public bool __modRed;
 
-        public List<dynamic> children;
+        public List<Node> children;
 
         public string vname = "";
 
-        public long __vidx = -1;
+        public int __vidx = -1;
 
-        public ulong constant = 0;
+        public long constant = 0;
 
         public NodeState state = NodeState.UNKNOWN;
 
-        public ulong linearEnd = 0;
+        public int linearEnd = 0;
 
-        public ulong __MAX_IT = 10;
+        public int __MAX_IT = 10;
 
-        public Node(dynamic nodeType, dynamic modulus, bool modRed = false)
+        public Node(NodeType nodeType, long modulus, bool modRed = false)
         {
             this.type = nodeType;
-            this.children = new List<dynamic>() { };
+            this.children = new List<Node>() { };
             this.vname = "";
             this.__vidx = -(1);
             this.constant = 0;
@@ -73,81 +145,83 @@ namespace Gamba.Prototyping.Transpiled
             this.__MAX_IT = 10;
         }
 
-        public dynamic __str__()
+        public string __str__()
         {
             return this.to_string();
         }
 
-        public void to_string(bool withParentheses = false, dynamic end = -(1), void varNames = null)
+        public string to_string(bool withParentheses = false, int end = -(1), List<string> varNames = null)
         {
-            if (end == -(1))
+            if ((end) == (-(1)))
             {
-                var end = this.children.Count();
+                end = this.children.Count();
             }
             else
             {
-                Assert.True(end <= this.children.Count());
+                Assert.True((end) <= (this.children.Count()));
             }
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 return str(this.constant);
             }
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
-                return (varNames == null) ? this.vname : varNames[this.__vidx];
+                return ((varNames) == (null)) ? this.vname : varNames[this.__vidx];
             }
-            if (this.type == NodeType.POWER)
+            string ret = null;
+            Node child1 = null;
+            if ((this.type) == (NodeType.POWER))
             {
-                Assert.True(this.children.Count() == 2);
-                var child1 = this.children[0];
-                var child2 = this.children[1];
-                var ret = child1.to_string(child1.type > NodeType.VARIABLE, -(1), varNames) + "**" + child2.to_string(child2.type > NodeType.VARIABLE, -(1), varNames);
-                if (withParentheses)
-                {
-                    ret = "(" + ret + ")";
-                }
-                return ret;
-            }
-            if (this.type == NodeType.NEGATION)
-            {
-                Assert.True(this.children.Count() == 1);
-                var child = this.children[0];
-                ret = "~" + child.to_string(child.type > NodeType.NEGATION, -(1), varNames);
-                if (withParentheses)
-                {
-                    ret = "(" + ret + ")";
-                }
-                return ret;
-            }
-            if (this.type == NodeType.PRODUCT)
-            {
-                Assert.True(this.children.Count() > 0);
+                Assert.True((this.children.Count()) == (2));
                 child1 = this.children[0];
-                var ret1 = child1.to_string(child1.type > NodeType.PRODUCT, -(1), varNames);
+                var child2 = this.children[1];
+                ret = ((((child1.to_string((child1.type) > (NodeType.VARIABLE), -(1), varNames)) + ("**"))) + (child2.to_string((child2.type) > (NodeType.VARIABLE), -(1), varNames)));
+                if (withParentheses)
+                {
+                    ret = (((("(") + (ret))) + (")"));
+                }
+                return ret;
+            }
+            if ((this.type) == (NodeType.NEGATION))
+            {
+                Assert.True((this.children.Count()) == (1));
+                var child = this.children[0];
+                ret = (("~") + (child.to_string((child.type) > (NodeType.NEGATION), -(1), varNames)));
+                if (withParentheses)
+                {
+                    ret = (((("(") + (ret))) + (")"));
+                }
+                return ret;
+            }
+            if ((this.type) == (NodeType.PRODUCT))
+            {
+                Assert.True((this.children.Count()) > (0));
+                child1 = this.children[0];
+                var ret1 = child1.to_string((child1.type) > (NodeType.PRODUCT), -(1), varNames);
                 ret = ret1;
                 foreach (var child in this.children.Slice(1, end, null))
                 {
-                    ret += "*" + child.to_string(child.type > NodeType.PRODUCT, -(1), varNames);
+                    ret += (("*") + (child.to_string((child.type) > (NodeType.PRODUCT), -(1), varNames)));
                 }
-                if ((ret1 == "-1" && this.children.Count() > 1 && end > 1))
+                if ((((ret1) == ("-1")) && ((this.children.Count()) > (1)) && ((end) > (1))))
                 {
-                    ret = "-" + ret.Slice(3, null, null);
+                    ret = (("-") + (ret.Slice(3, null, null)));
                 }
                 if (withParentheses)
                 {
-                    ret = "(" + ret + ")";
+                    ret = (((("(") + (ret))) + (")"));
                 }
                 return ret;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
-                Assert.True(this.children.Count() > 0);
+                Assert.True((this.children.Count()) > (0));
                 child1 = this.children[0];
-                ret = child1.to_string(child1.type > NodeType.SUM, -(1), varNames);
+                ret = child1.to_string((child1.type) > (NodeType.SUM), -(1), varNames);
                 foreach (var child in this.children.Slice(1, end, null))
                 {
-                    var s = child.to_string(child.type > NodeType.SUM, -(1), varNames);
-                    if (s[0] != "-")
+                    var s = child.to_string((child.type) > (NodeType.SUM), -(1), varNames);
+                    if ((str(s[0])) != ("-"))
                     {
                         ret += "+";
                     }
@@ -155,72 +229,73 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if (withParentheses)
                 {
-                    ret = "(" + ret + ")";
+                    ret = (((("(") + (ret))) + (")"));
                 }
                 return ret;
             }
-            if (this.type == NodeType.CONJUNCTION)
+            if ((this.type) == (NodeType.CONJUNCTION))
             {
-                Assert.True(this.children.Count() > 0);
+                Assert.True((this.children.Count()) > (0));
                 child1 = this.children[0];
-                ret = child1.to_string(child1.type > NodeType.CONJUNCTION, -(1), varNames);
+                ret = child1.to_string((child1.type) > (NodeType.CONJUNCTION), -(1), varNames);
                 foreach (var child in this.children.Slice(1, end, null))
                 {
-                    ret += "&" + child.to_string(child.type > NodeType.CONJUNCTION, -(1), varNames);
+                    ret += (("&") + (child.to_string((child.type) > (NodeType.CONJUNCTION), -(1), varNames)));
                 }
                 if (withParentheses)
                 {
-                    ret = "(" + ret + ")";
+                    ret = (((("(") + (ret))) + (")"));
                 }
                 return ret;
             }
             else
             {
-                if (this.type == NodeType.EXCL_DISJUNCTION)
+                if ((this.type) == (NodeType.EXCL_DISJUNCTION))
                 {
-                    Assert.True(this.children.Count() > 0);
+                    Assert.True((this.children.Count()) > (0));
                     child1 = this.children[0];
-                    ret = child1.to_string(child1.type > NodeType.EXCL_DISJUNCTION, -(1), varNames);
+                    ret = child1.to_string((child1.type) > (NodeType.EXCL_DISJUNCTION), -(1), varNames);
                     foreach (var child in this.children.Slice(1, end, null))
                     {
-                        ret += "^" + child.to_string(child.type > NodeType.EXCL_DISJUNCTION, -(1), varNames);
+                        ret += (("^") + (child.to_string((child.type) > (NodeType.EXCL_DISJUNCTION), -(1), varNames)));
                     }
                     if (withParentheses)
                     {
-                        ret = "(" + ret + ")";
+                        ret = (((("(") + (ret))) + (")"));
                     }
                     return ret;
                 }
             }
-            if (this.type == NodeType.INCL_DISJUNCTION)
+            if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
-                Assert.True(this.children.Count() > 0);
+                Assert.True((this.children.Count()) > (0));
                 child1 = this.children[0];
-                ret = child1.to_string(child1.type > NodeType.INCL_DISJUNCTION, -(1), varNames);
+                ret = child1.to_string((child1.type) > (NodeType.INCL_DISJUNCTION), -(1), varNames);
                 foreach (var child in this.children.Slice(1, end, null))
                 {
-                    ret += "|" + child.to_string(child.type > NodeType.INCL_DISJUNCTION, -(1), varNames);
+                    ret += (("|") + (child.to_string((child.type) > (NodeType.INCL_DISJUNCTION), -(1), varNames)));
                 }
                 if (withParentheses)
                 {
-                    ret = "(" + ret + ")";
+                    ret = (((("(") + (ret))) + (")"));
                 }
                 return ret;
             }
             Assert.True(false);
+            return null;
         }
 
-        public dynamic part_to_string(dynamic end)
+        public string part_to_string(int end)
         {
             return this.to_string(false, end);
         }
 
-        public dynamic __power(dynamic b, dynamic e)
+        public long __power(long b, long e)
         {
             return power(b, e, this.__modulus);
         }
 
-        public dynamic __get_reduced_constant(dynamic c)
+        public long __get_reduced_constant(long c)
         {
             if (this.__modRed)
             {
@@ -229,10 +304,10 @@ namespace Gamba.Prototyping.Transpiled
             return this.__get_reduced_constant_closer_to_zero(c);
         }
 
-        public dynamic __get_reduced_constant_closer_to_zero(dynamic c)
+        public long __get_reduced_constant_closer_to_zero(long c)
         {
-            var c = mod_red(c, this.__modulus);
-            if (2 * c > this.__modulus)
+            c = mod_red(c, this.__modulus);
+            if ((((2) * (c))) > (this.__modulus))
             {
                 c -= this.__modulus;
             }
@@ -244,21 +319,21 @@ namespace Gamba.Prototyping.Transpiled
             this.constant = this.__get_reduced_constant(this.constant);
         }
 
-        public void __set_and_reduce_constant(dynamic c)
+        public void __set_and_reduce_constant(long c)
         {
             this.constant = this.__get_reduced_constant(c);
         }
 
-        public void collect_and_enumerate_variables(dynamic variables)
+        public void collect_and_enumerate_variables(List<string> variables)
         {
             this.collect_variables(variables);
-            variables.sort();
+            variables.Sort();
             this.enumerate_variables(variables);
         }
 
-        public void collect_variables(dynamic variables)
+        public void collect_variables(List<string> variables)
         {
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
                 if (!(((variables).Contains(this.vname))))
                 {
@@ -274,12 +349,12 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void enumerate_variables(dynamic variables)
+        public void enumerate_variables(List<string> variables)
         {
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
                 Assert.True(((variables).Contains(this.vname)));
-                this.__vidx = variables.index(this.vname);
+                this.__vidx = variables.IndexOf(this.vname);
             }
             else
             {
@@ -290,32 +365,33 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void get_max_vname(dynamic start, dynamic end)
+        public NullableI32 get_max_vname(string start, string end)
         {
-            if (this.type == NodeType.VARIABLE)
+            string nStr = null;
+            if ((this.type) == (NodeType.VARIABLE))
             {
-                if (this.vname.Slice(null, start.Count(), null) != start)
+                if ((this.vname.Slice(null, start.Count(), null)) != (start))
                 {
                     return null;
                 }
-                if (this.vname.Slice(-(end.Count()), null, null) != end)
+                if ((this.vname.Slice(-(end.Count()), null, null)) != (end))
                 {
                     return null;
                 }
-                var n = this.vname.Slice(start.Count(), -(end.Count()), null);
-                if (!(n.isnumeric()))
+                nStr = this.vname.Slice(start.Count(), -(end.Count()), null);
+                if (!(nStr.isnumeric()))
                 {
                     return null;
                 }
-                return int(n);
+                return Convert.ToInt32(nStr);
             }
             else
             {
-                var maxn = null;
+                NullableI32 maxn = null;
                 foreach (var child in this.children)
                 {
-                    n = child.get_max_vname(start, end);
-                    if ((n != null && (maxn == null || n > maxn)))
+                    var n = child.get_max_vname(start, end);
+                    if ((((n) != (null)) && ((((maxn) == (null)) || ((n) > (maxn))))))
                     {
                         maxn = n;
                     }
@@ -324,63 +400,63 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public dynamic eval(dynamic X)
+        public long eval(List<long> X)
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                return this.constant % this.__modulus;
+                return ((this.constant) % (this.__modulus));
             }
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
-                if (this.__vidx < 0)
+                if ((this.__vidx) < (0))
                 {
-                    sys.exit("ERROR: Variable index not set prior to evaluation!");
+                    throw new InvalidOperationException("ERROR: Variable index not set prior to evaluation!");
                 }
-                return X[this.__vidx] % this.__modulus;
+                return ((X[this.__vidx]) % (this.__modulus));
             }
-            Assert.True(this.children.Count() > 0);
-            if (this.type == NodeType.NEGATION)
+            Assert.True((this.children.Count()) > (0));
+            if ((this.type) == (NodeType.NEGATION))
             {
-                return ~(this.children[0].eval(X)) % this.__modulus;
+                return ((~(this.children[0].eval(X))) % (this.__modulus));
             }
             var val = this.children[0].eval(X);
-            foreach (var i in range(1, this.children.Count()))
+            foreach (var i in Range.Get(1, this.children.Count()))
             {
-                val = this.__apply_binop(val, this.children[i].eval(X)) % this.__modulus;
+                val = ((this.__apply_binop(val, this.children[i].eval(X))) % (this.__modulus));
             }
             return val;
         }
 
-        public dynamic __apply_binop(dynamic x, dynamic y)
+        public long __apply_binop(long x, long y)
         {
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 return this.__power(x, y);
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                return x * y;
+                return ((x) * (y));
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
-                return x + y;
+                return ((x) + (y));
             }
             return this.__apply_bitwise_binop(x, y);
         }
 
-        public ulong __apply_bitwise_binop(dynamic x, dynamic y)
+        public long __apply_bitwise_binop(long x, long y)
         {
-            if (this.type == NodeType.CONJUNCTION)
+            if ((this.type) == (NodeType.CONJUNCTION))
             {
-                return x & y;
+                return ((x) & (y));
             }
-            if (this.type == NodeType.EXCL_DISJUNCTION)
+            if ((this.type) == (NodeType.EXCL_DISJUNCTION))
             {
-                return x ^ y;
+                return ((x) ^ (y));
             }
-            if (this.type == NodeType.INCL_DISJUNCTION)
+            if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
-                return x | y;
+                return ((x) | (y));
             }
             Assert.True(false);
             return 0;
@@ -390,7 +466,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var child in this.children)
             {
-                if ((child.state == NodeState.NONLINEAR || child.state == NodeState.MIXED))
+                if ((((child.state) == (NodeState.NONLINEAR)) || ((child.state) == (NodeState.MIXED))))
                 {
                     return true;
                 }
@@ -398,61 +474,62 @@ namespace Gamba.Prototyping.Transpiled
             return false;
         }
 
-        public dynamic __are_all_children_contained(dynamic other)
+        public bool __are_all_children_contained(Node other)
         {
-            Assert.True(other.type == this.type);
+            Assert.True((other.type) == (this.type));
             return are_all_children_contained(this.children, other.children);
         }
 
-        public dynamic equals(dynamic other)
+        public bool equals(Node other)
         {
-            if (this.type != other.type)
+            if ((this.type) != (other.type))
             {
                 return this.__equals_rewriting_bitwise(other);
             }
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                return this.constant == other.constant;
+                return (this.constant) == (other.constant);
             }
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
-                return this.vname == other.vname;
+                return (this.vname) == (other.vname);
             }
-            if (this.children.Count() != other.children.Count())
+            if ((this.children.Count()) != (other.children.Count()))
             {
                 return false;
             }
             return this.__are_all_children_contained(other);
         }
 
-        public bool equals_negated(dynamic other)
+        public bool equals_negated(Node other)
         {
-            if ((this.type == NodeType.NEGATION && this.children[0].Equals(other)))
+            if ((((this.type) == (NodeType.NEGATION)) && (this.children[0].Equals(other))))
             {
                 return true;
             }
-            if ((other.type == NodeType.NEGATION && other.children[0].Equals(self)))
+            if ((((other.type) == (NodeType.NEGATION)) && (other.children[0].Equals(this))))
             {
                 return true;
             }
             return false;
         }
 
-        public bool __equals_rewriting_bitwise(dynamic other)
+        public bool __equals_rewriting_bitwise(Node other)
         {
-            return (this.__equals_rewriting_bitwise_asymm(other) || other.__equals_rewriting_bitwise_asymm(self));
+            return ((this.__equals_rewriting_bitwise_asymm(other)) || (other.__equals_rewriting_bitwise_asymm(this)));
         }
 
-        public bool __equals_rewriting_bitwise_asymm(dynamic other)
+        public bool __equals_rewriting_bitwise_asymm(Node other)
         {
-            if (this.type == NodeType.NEGATION)
+            Node node = null;
+            if ((this.type) == (NodeType.NEGATION))
             {
-                var node = other.__get_opt_transformed_negated();
-                return (node != null && node.Equals(this.children[0]));
+                node = other.__get_opt_transformed_negated();
+                return (((node) != (null)) && (node.Equals(this.children[0])));
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                if (this.children.Count() != 2)
+                if ((this.children.Count()) != (2))
                 {
                     return false;
                 }
@@ -460,23 +537,23 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     return false;
                 }
-                if (this.children[1].type != NodeType.NEGATION)
+                if ((this.children[1].type) != (NodeType.NEGATION))
                 {
                     return false;
                 }
                 node = other.__get_opt_negative_transformed_negated();
-                return (node != null && node.Equals(this.children[1].children[0]));
+                return (((node) != (null)) && (node.Equals(this.children[1].children[0])));
             }
             return false;
         }
 
-        public dynamic __get_opt_negative_transformed_negated()
+        public Node __get_opt_negative_transformed_negated()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return null;
             }
-            if (this.children.Count() < 2)
+            if ((this.children.Count()) < (2))
             {
                 return null;
             }
@@ -485,23 +562,23 @@ namespace Gamba.Prototyping.Transpiled
                 return null;
             }
             var res = this.__new_node(NodeType.SUM);
-            foreach (var i in range(1, this.children.Count()))
+            foreach (var i in Range.Get(1, this.children.Count()))
             {
                 res.children.Add(this.children[i].get_copy());
             }
-            Assert.True(res.children.Count() > 0);
-            if (res.children.Count() == 1)
+            Assert.True((res.children.Count()) > (0));
+            if ((res.children.Count()) == (1))
             {
                 return res.children[0];
             }
             return res;
         }
 
-        public void __remove_children_of_node(dynamic other)
+        public void __remove_children_of_node(Node other)
         {
             foreach (var ochild in other.children)
             {
-                foreach (var i in range(this.children.Count()))
+                foreach (var i in Range.Get(this.children.Count()))
                 {
                     if (this.children[i].Equals(ochild))
                     {
@@ -512,12 +589,12 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public Node __new_node(dynamic t)
+        public Node __new_node(NodeType t)
         {
             return new Node(t, this.__modulus, this.__modRed);
         }
 
-        public Node __new_constant_node(dynamic constant)
+        public Node __new_constant_node(long constant)
         {
             var node = this.__new_node(NodeType.CONSTANT);
             node.constant = constant;
@@ -525,30 +602,30 @@ namespace Gamba.Prototyping.Transpiled
             return node;
         }
 
-        public Node __new_variable_node(dynamic vname)
+        public Node __new_variable_node(string vname)
         {
             var node = this.__new_node(NodeType.VARIABLE);
             node.vname = vname;
             return node;
         }
 
-        public Node __new_node_with_children(dynamic t, dynamic children)
+        public Node __new_node_with_children(NodeType t, List<Node> children)
         {
             var node = this.__new_node(t);
             node.children = children;
             return node;
         }
 
-        public void replace_variable_by_constant(dynamic vname, dynamic constant)
+        public void replace_variable_by_constant(string vname, long constant)
         {
             this.replace_variable(vname, this.__new_constant_node(constant));
         }
 
-        public void replace_variable(dynamic vname, dynamic node)
+        public void replace_variable(string vname, Node node)
         {
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
-                if (this.vname == vname)
+                if ((this.vname) == (vname))
                 {
                     this.__copy_all(node);
                 }
@@ -560,9 +637,9 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void refine(void parent = null, bool restrictedScope = false)
+        public void refine(Node parent = null, bool restrictedScope = false)
         {
-            foreach (var i in range(this.__MAX_IT))
+            foreach (var i in Range.Get(this.__MAX_IT))
             {
                 this.__refine_step_1(restrictedScope);
                 if (!(this.__refine_step_2(parent, restrictedScope)))
@@ -590,49 +667,49 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __inspect_constants()
         {
-            if (this.type == NodeType.INCL_DISJUNCTION)
+            if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
                 this.__inspect_constants_incl_disjunction();
             }
             else
             {
-                if (this.type == NodeType.EXCL_DISJUNCTION)
+                if ((this.type) == (NodeType.EXCL_DISJUNCTION))
                 {
                     this.__inspect_constants_excl_disjunction();
                 }
                 else
                 {
-                    if (this.type == NodeType.CONJUNCTION)
+                    if ((this.type) == (NodeType.CONJUNCTION))
                     {
                         this.__inspect_constants_conjunction();
                     }
                     else
                     {
-                        if (this.type == NodeType.SUM)
+                        if ((this.type) == (NodeType.SUM))
                         {
                             this.__inspect_constants_sum();
                         }
                         else
                         {
-                            if (this.type == NodeType.PRODUCT)
+                            if ((this.type) == (NodeType.PRODUCT))
                             {
                                 this.__inspect_constants_product();
                             }
                             else
                             {
-                                if (this.type == NodeType.NEGATION)
+                                if ((this.type) == (NodeType.NEGATION))
                                 {
                                     this.__inspect_constants_negation();
                                 }
                                 else
                                 {
-                                    if (this.type == NodeType.POWER)
+                                    if ((this.type) == (NodeType.POWER))
                                     {
                                         this.__inspect_constants_power();
                                     }
                                     else
                                     {
-                                        if (this.type == NodeType.CONSTANT)
+                                        if ((this.type) == (NodeType.CONSTANT))
                                         {
                                             this.__inspect_constants_constant();
                                         }
@@ -649,14 +726,14 @@ namespace Gamba.Prototyping.Transpiled
         {
             var first = this.children[0];
             var isMinusOne = first.__is_constant(-(1));
-            var toRemove = new List<dynamic>() { };
+            List<Node> toRemove = new() { };
             if (!(isMinusOne))
             {
                 foreach (var child in this.children.Slice(1, null, null))
                 {
-                    if (child.type == NodeType.CONSTANT)
+                    if ((child.type) == (NodeType.CONSTANT))
                     {
-                        if (child.constant == 0)
+                        if ((child.constant) == (0))
                         {
                             toRemove.Add(child);
                             continue;
@@ -667,14 +744,14 @@ namespace Gamba.Prototyping.Transpiled
                             break;
                         }
                         first = this.children[0];
-                        if (first.type == NodeType.CONSTANT)
+                        if ((first.type) == (NodeType.CONSTANT))
                         {
-                            first.__set_and_reduce_constant(first.constant | child.constant);
+                            first.__set_and_reduce_constant(((first.constant) | (child.constant)));
                             toRemove.Add(child);
                         }
                         else
                         {
-                            this.children.remove(child);
+                            this.children.Remove(child);
                             this.children.Insert(0, child);
                         }
                     }
@@ -682,66 +759,67 @@ namespace Gamba.Prototyping.Transpiled
             }
             if (isMinusOne)
             {
-                this.children = new List<dynamic>() { };
+                this.children = new() { };
                 this.type = NodeType.CONSTANT;
                 this.__set_and_reduce_constant(-(1));
                 return;
             }
             foreach (var child in toRemove)
             {
-                this.children.remove(child);
+                this.children.Remove(child);
             }
             first = this.children[0];
-            if ((this.children.Count() > 1 && first.__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (first.__is_constant(0))))
             {
-                this.children.pop(0);
+                this.children.Pop(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
         }
 
-        public bool __is_constant(dynamic value)
+        public bool __is_constant(int value)
         {
-            return (this.type == NodeType.CONSTANT && mod_red(this.constant - value, this.__modulus) == 0);
+            return (((this.type) == (NodeType.CONSTANT)) && ((mod_red(((this.constant) - (value)), this.__modulus)) == (0)));
         }
 
         public void __inspect_constants_excl_disjunction()
         {
-            var toRemove = new List<dynamic>() { };
+            List<Node> toRemove = new() { };
+            Node first = null;
             foreach (var child in this.children.Slice(1, null, null))
             {
-                if (child.type == NodeType.CONSTANT)
+                if ((child.type) == (NodeType.CONSTANT))
                 {
-                    if (child.constant == 0)
+                    if ((child.constant) == (0))
                     {
                         toRemove.Add(child);
                         continue;
                     }
-                    var first = this.children[0];
-                    if (first.type == NodeType.CONSTANT)
+                    first = this.children[0];
+                    if ((first.type) == (NodeType.CONSTANT))
                     {
-                        first.__set_and_reduce_constant(first.constant ^ child.constant);
+                        first.__set_and_reduce_constant(((first.constant) ^ (child.constant)));
                         toRemove.Add(child);
                     }
                     else
                     {
-                        this.children.remove(child);
+                        this.children.Remove(child);
                         this.children.Insert(0, child);
                     }
                 }
             }
             foreach (var child in toRemove)
             {
-                this.children.remove(child);
+                this.children.Remove(child);
             }
             first = this.children[0];
-            if ((this.children.Count() > 1 && first.__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (first.__is_constant(0))))
             {
-                this.children.pop(0);
+                this.children.Pop(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -751,32 +829,32 @@ namespace Gamba.Prototyping.Transpiled
         {
             var first = this.children[0];
             var isZero = first.__is_constant(0);
-            var toRemove = new List<dynamic>() { };
+            List<Node> toRemove = new() { };
             if (!(isZero))
             {
                 foreach (var child in this.children.Slice(1, null, null))
                 {
-                    if (child.type == NodeType.CONSTANT)
+                    if ((child.type) == (NodeType.CONSTANT))
                     {
                         if (child.__is_constant(-(1)))
                         {
                             toRemove.Add(child);
                             continue;
                         }
-                        if (child.constant == 0)
+                        if ((child.constant) == (0))
                         {
                             isZero = true;
                             break;
                         }
                         first = this.children[0];
-                        if (first.type == NodeType.CONSTANT)
+                        if ((first.type) == (NodeType.CONSTANT))
                         {
-                            first.__set_and_reduce_constant(first.constant & child.constant);
+                            first.__set_and_reduce_constant(((first.constant) & (child.constant)));
                             toRemove.Add(child);
                         }
                         else
                         {
-                            this.children.remove(child);
+                            this.children.Remove(child);
                             this.children.Insert(0, child);
                         }
                     }
@@ -784,21 +862,21 @@ namespace Gamba.Prototyping.Transpiled
             }
             if (isZero)
             {
-                this.children = new List<dynamic>() { };
+                this.children = new() { };
                 this.type = NodeType.CONSTANT;
                 this.constant = 0;
                 return;
             }
             foreach (var child in toRemove)
             {
-                this.children.remove(child);
+                this.children.Remove(child);
             }
             first = this.children[0];
-            if ((this.children.Count() > 1 && first.__is_constant(-(1))))
+            if ((((this.children.Count()) > (1)) && (first.__is_constant(-(1)))))
             {
-                this.children.pop(0);
+                this.children.Pop(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -807,39 +885,39 @@ namespace Gamba.Prototyping.Transpiled
         public void __inspect_constants_sum()
         {
             var first = this.children[0];
-            var toRemove = new List<dynamic>() { };
+            List<Node> toRemove = new() { };
             foreach (var child in this.children.Slice(1, null, null))
             {
-                if (child.type == NodeType.CONSTANT)
+                if ((child.type) == (NodeType.CONSTANT))
                 {
-                    if (child.constant == 0)
+                    if ((child.constant) == (0))
                     {
                         toRemove.Add(child);
                         continue;
                     }
                     first = this.children[0];
-                    if (first.type == NodeType.CONSTANT)
+                    if ((first.type) == (NodeType.CONSTANT))
                     {
-                        first.__set_and_reduce_constant(first.constant + child.constant);
+                        first.__set_and_reduce_constant(((first.constant) + (child.constant)));
                         toRemove.Add(child);
                     }
                     else
                     {
-                        this.children.remove(child);
+                        this.children.Remove(child);
                         this.children.Insert(0, child);
                     }
                 }
             }
             foreach (var child in toRemove)
             {
-                this.children.remove(child);
+                this.children.Remove(child);
             }
             first = this.children[0];
-            if ((this.children.Count() > 1 && first.__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (first.__is_constant(0))))
             {
-                this.children.pop(0);
+                this.children.Pop(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -849,32 +927,32 @@ namespace Gamba.Prototyping.Transpiled
         {
             var first = this.children[0];
             var isZero = first.__is_constant(0);
-            var toRemove = new List<dynamic>() { };
+            List<Node> toRemove = new() { };
             if (!(isZero))
             {
                 foreach (var child in this.children.Slice(1, null, null))
                 {
-                    if (child.type == NodeType.CONSTANT)
+                    if ((child.type) == (NodeType.CONSTANT))
                     {
-                        if (child.constant == 1)
+                        if ((child.constant) == (1))
                         {
                             toRemove.Add(child);
                             continue;
                         }
-                        if (child.constant == 0)
+                        if ((child.constant) == (0))
                         {
                             isZero = true;
                             break;
                         }
                         first = this.children[0];
-                        if (first.type == NodeType.CONSTANT)
+                        if ((first.type) == (NodeType.CONSTANT))
                         {
-                            first.__set_and_reduce_constant(first.constant * child.constant);
+                            first.__set_and_reduce_constant(((first.constant) * (child.constant)));
                             toRemove.Add(child);
                         }
                         else
                         {
-                            this.children.remove(child);
+                            this.children.Remove(child);
                             this.children.Insert(0, child);
                         }
                     }
@@ -882,21 +960,21 @@ namespace Gamba.Prototyping.Transpiled
             }
             if (isZero)
             {
-                this.children = new List<dynamic>() { };
+                this.children = new() { };
                 this.type = NodeType.CONSTANT;
                 this.constant = 0;
                 return;
             }
             foreach (var child in toRemove)
             {
-                this.children.remove(child);
+                this.children.Remove(child);
             }
             first = this.children[0];
-            if ((this.children.Count() > 1 && first.__is_constant(1)))
+            if ((((this.children.Count()) > (1)) && (first.__is_constant(1))))
             {
-                this.children.pop(0);
+                this.children.Pop(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -904,17 +982,17 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __inspect_constants_negation()
         {
-            Assert.True(this.children.Count() == 1);
+            Assert.True((this.children.Count()) == (1));
             var child = this.children[0];
-            if (child.type == NodeType.NEGATION)
+            if ((child.type) == (NodeType.NEGATION))
             {
                 this.copy(child.children[0]);
             }
             else
             {
-                if (child.type == NodeType.CONSTANT)
+                if ((child.type) == (NodeType.CONSTANT))
                 {
-                    child.__set_and_reduce_constant(-(child.constant) - 1);
+                    child.__set_and_reduce_constant(((-(child.constant)) - (1)));
                     this.copy(child);
                 }
             }
@@ -922,28 +1000,28 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __inspect_constants_power()
         {
-            Assert.True(this.children.Count() == 2);
-            var base = this.children[0];
+            Assert.True((this.children.Count()) == (2));
+            var _base = this.children[0];
             var exp = this.children[1];
-            if ((base.type == NodeType.CONSTANT && exp.type == NodeType.CONSTANT))
+            if ((((_base.type) == (NodeType.CONSTANT)) && ((exp.type) == (NodeType.CONSTANT))))
             {
-                base.__set_and_reduce_constant(this.__power(base.constant, exp.constant));
-                this.copy(base);
+                _base.__set_and_reduce_constant(this.__power(_base.constant, exp.constant));
+                this.copy(_base);
                 return;
             }
-            if (exp.type == NodeType.CONSTANT)
+            if ((exp.type) == (NodeType.CONSTANT))
             {
-                if (exp.constant == 0)
+                if ((exp.constant) == (0))
                 {
                     this.type = NodeType.CONSTANT;
                     this.constant = 1;
-                    this.children = new List<dynamic>() { };
+                    this.children = new() { };
                 }
                 else
                 {
-                    if (exp.constant == 1)
+                    if ((exp.constant) == (1))
                     {
-                        this.copy(base);
+                        this.copy(_base);
                     }
                 }
             }
@@ -954,7 +1032,7 @@ namespace Gamba.Prototyping.Transpiled
             this.__reduce_constant();
         }
 
-        public void copy(dynamic node)
+        public void copy(Node node)
         {
             this.type = node.type;
             this.state = node.state;
@@ -964,11 +1042,11 @@ namespace Gamba.Prototyping.Transpiled
             this.constant = node.constant;
         }
 
-        public void __copy_all(dynamic node)
+        public void __copy_all(Node node)
         {
             this.type = node.type;
             this.state = node.state;
-            this.children = new List<dynamic>() { };
+            this.children = new() { };
             this.vname = node.vname;
             this.__vidx = node.__vidx;
             this.constant = node.constant;
@@ -980,18 +1058,18 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __copy_children()
         {
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 this.children[i] = this.children[i].get_copy();
                 this.children[i].__copy_children();
             }
         }
 
-        public dynamic get_copy()
+        public Node get_copy()
         {
             var n = this.__new_node(this.type);
             n.state = this.state;
-            n.children = new List<dynamic>() { };
+            n.children = new() { };
             n.vname = this.vname;
             n.__vidx = this.__vidx;
             n.constant = this.constant;
@@ -1002,45 +1080,45 @@ namespace Gamba.Prototyping.Transpiled
             return n;
         }
 
-        public dynamic __get_shallow_copy()
+        public Node __get_shallow_copy()
         {
             var n = this.__new_node(this.type);
             n.state = this.state;
-            n.children = new List<dynamic>() { };
+            n.children = new() { };
             n.vname = this.vname;
             n.__vidx = this.__vidx;
             n.constant = this.constant;
-            n.children = list(this.children);
+            n.children = new(this.children);
             return n;
         }
 
         public void __flatten()
         {
-            if (this.type == NodeType.INCL_DISJUNCTION)
+            if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
                 this.__flatten_binary_generic();
             }
             else
             {
-                if (this.type == NodeType.EXCL_DISJUNCTION)
+                if ((this.type) == (NodeType.EXCL_DISJUNCTION))
                 {
                     this.__flatten_binary_generic();
                 }
                 else
                 {
-                    if (this.type == NodeType.CONJUNCTION)
+                    if ((this.type) == (NodeType.CONJUNCTION))
                     {
                         this.__flatten_binary_generic();
                     }
                     else
                     {
-                        if (this.type == NodeType.SUM)
+                        if ((this.type) == (NodeType.SUM))
                         {
                             this.__flatten_binary_generic();
                         }
                         else
                         {
-                            if (this.type == NodeType.PRODUCT)
+                            if ((this.type) == (NodeType.PRODUCT))
                             {
                                 this.__flatten_product();
                             }
@@ -1053,15 +1131,15 @@ namespace Gamba.Prototyping.Transpiled
         public void __flatten_binary_generic()
         {
             var changed = false;
-            foreach (var i in range(this.children.Count() - 1, -(1), -(1)))
+            foreach (var i in Range.Get(((this.children.Count()) - (1)), -(1), -(1)))
             {
                 var child = this.children[i];
-                if (child.type != this.type)
+                if ((child.type) != (this.type))
                 {
                     continue;
                 }
                 this.children.RemoveAt(i);
-                this.children.extend(child.children);
+                this.children.AddRange(child.children);
                 changed = true;
             }
             if (changed)
@@ -1074,21 +1152,21 @@ namespace Gamba.Prototyping.Transpiled
         {
             var changed = false;
             var i = 0;
-            while (i < this.children.Count())
+            while ((i) < (this.children.Count()))
             {
                 var child = this.children[i];
-                if (child.type != this.type)
+                if ((child.type) != (this.type))
                 {
                     i += 1;
                     continue;
                 }
                 changed = true;
                 this.children.RemoveAt(i);
-                if (child.children[0].type == NodeType.CONSTANT)
+                if ((child.children[0].type) == (NodeType.CONSTANT))
                 {
-                    if ((i > 0 && this.children[0].type == NodeType.CONSTANT))
+                    if ((((i) > (0)) && ((this.children[0].type) == (NodeType.CONSTANT))))
                     {
-                        var prod = this.children[0].constant * child.children[0].constant;
+                        var prod = ((this.children[0].constant) * (child.children[0].constant));
                         this.children[0].__set_and_reduce_constant(prod);
                     }
                     else
@@ -1105,10 +1183,10 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return;
             }
-            if (this.children.Count() > 1)
+            if ((this.children.Count()) > (1))
             {
                 var first = this.children[0];
-                if (first.type != NodeType.CONSTANT)
+                if ((first.type) != (NodeType.CONSTANT))
                 {
                     return;
                 }
@@ -1118,7 +1196,7 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 this.children.RemoveAt(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -1126,25 +1204,25 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __check_duplicate_children()
         {
-            if (this.type == NodeType.INCL_DISJUNCTION)
+            if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
                 this.__remove_duplicate_children();
             }
             else
             {
-                if (this.type == NodeType.EXCL_DISJUNCTION)
+                if ((this.type) == (NodeType.EXCL_DISJUNCTION))
                 {
                     this.__remove_pairs_of_children();
                 }
                 else
                 {
-                    if (this.type == NodeType.CONJUNCTION)
+                    if ((this.type) == (NodeType.CONJUNCTION))
                     {
                         this.__remove_duplicate_children();
                     }
                     else
                     {
-                        if (this.type == NodeType.SUM)
+                        if ((this.type) == (NodeType.SUM))
                         {
                             this.__merge_similar_nodes_sum();
                         }
@@ -1156,9 +1234,9 @@ namespace Gamba.Prototyping.Transpiled
         public void __remove_duplicate_children()
         {
             var i = 0;
-            while (i < this.children.Count())
+            while ((i) < (this.children.Count()))
             {
-                foreach (var j in range(this.children.Count() - 1, i, -(1)))
+                foreach (var j in Range.Get(((this.children.Count()) - (1)), i, -(1)))
                 {
                     if (this.children[i].Equals(this.children[j]))
                     {
@@ -1172,9 +1250,9 @@ namespace Gamba.Prototyping.Transpiled
         public void __remove_pairs_of_children()
         {
             var i = 0;
-            while (i < this.children.Count())
+            while ((i) < (this.children.Count()))
             {
-                foreach (var j in range(this.children.Count() - 1, i, -(1)))
+                foreach (var j in Range.Get(((this.children.Count()) - (1)), i, -(1)))
                 {
                     if (this.children[i].Equals(this.children[j]))
                     {
@@ -1186,20 +1264,20 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 i += 1;
             }
-            if (this.children.Count() == 0)
+            if ((this.children.Count()) == (0))
             {
-                this.children = new List<dynamic>() { this.__new_constant_node(0) };
+                this.children = new() { this.__new_constant_node(0) };
             }
         }
 
         public void __merge_similar_nodes_sum()
         {
-            Assert.True(this.type == NodeType.SUM);
+            Assert.True((this.type) == (NodeType.SUM));
             var i = 0;
-            while (i < this.children.Count() - 1)
+            while ((i) < (((this.children.Count()) - (1))))
             {
-                var j = i + 1;
-                while (j < this.children.Count())
+                var j = ((i) + (1));
+                while ((j) < (this.children.Count()))
                 {
                     if (this.__try_merge_sum_children(i, j))
                     {
@@ -1218,8 +1296,8 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     if (this.children[i].__has_factor_one())
                     {
-                        this.children[i].children.pop(0);
-                        if (this.children[i].children.Count() == 1)
+                        this.children[i].children.Pop(0);
+                        if ((this.children[i].children.Count()) == (1))
                         {
                             this.children[i] = this.children[i].children[0];
                         }
@@ -1227,63 +1305,63 @@ namespace Gamba.Prototyping.Transpiled
                     i += 1;
                 }
             }
-            if (this.children.Count() > 1)
+            if ((this.children.Count()) > (1))
             {
                 return;
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
                 return;
             }
             this.type = NodeType.CONSTANT;
-            this.children = new List<dynamic>() { };
+            this.children = new() { };
             this.constant = 0;
         }
 
         public bool __is_zero_product()
         {
-            return (this.type == NodeType.PRODUCT && this.children[0].__is_constant(0));
+            return (((this.type) == (NodeType.PRODUCT)) && (this.children[0].__is_constant(0)));
         }
 
         public bool __has_factor_one()
         {
-            return (this.type == NodeType.PRODUCT && this.children[0].__is_constant(1));
+            return (((this.type) == (NodeType.PRODUCT)) && (this.children[0].__is_constant(1)));
         }
 
-        public void __get_opt_const_factor()
+        public NullableI64 __get_opt_const_factor()
         {
-            if ((this.type == NodeType.PRODUCT && this.children[0].type == NodeType.CONSTANT))
+            if ((((this.type) == (NodeType.PRODUCT)) && ((this.children[0].type) == (NodeType.CONSTANT))))
             {
                 return this.children[0].constant;
             }
             return null;
         }
 
-        public bool __try_merge_sum_children(dynamic i, dynamic j)
+        public bool __try_merge_sum_children(int i, int j)
         {
             var child1 = this.children[i];
             var const1 = child1.__get_opt_const_factor();
             var child2 = this.children[j];
             var const2 = child2.__get_opt_const_factor();
-            if (!(child1.__equals_neglecting_constants(child2, const1 != null, const2 != null)))
+            if (!(child1.__equals_neglecting_constants(child2, (const1) != (null), (const2) != (null))))
             {
                 return false;
             }
-            if (const2 == null)
+            if ((const2) == (null))
             {
                 const2 = 1;
             }
-            if (const1 == null)
+            if ((const1) == (null))
             {
-                if (child1.type == NodeType.PRODUCT)
+                if ((child1.type) == (NodeType.PRODUCT))
                 {
-                    child1.children.Insert(0, this.__new_constant_node(1 + const2));
+                    child1.children.Insert(0, this.__new_constant_node(((1) + (const2))));
                 }
                 else
                 {
-                    var c = this.__new_constant_node(1 + const2);
-                    this.children[i] = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { c, child1 });
+                    var c = this.__new_constant_node(((1) + (const2)));
+                    this.children[i] = this.__new_node_with_children(NodeType.PRODUCT, new() { c, child1 });
                 }
             }
             else
@@ -1294,19 +1372,19 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public dynamic __equals_neglecting_constants(dynamic other, dynamic hasConst, dynamic hasConstOther)
+        public bool __equals_neglecting_constants(Node other, bool hasConst, bool hasConstOther)
         {
-            Assert.True((!(hasConst) || this.type == NodeType.PRODUCT));
-            Assert.True((!(hasConstOther) || other.type == NodeType.PRODUCT));
-            Assert.True((!(hasConst) || this.children[0].type == NodeType.CONSTANT));
-            Assert.True((!(hasConstOther) || other.children[0].type == NodeType.CONSTANT));
+            Assert.True(((!(hasConst)) || ((this.type) == (NodeType.PRODUCT))));
+            Assert.True(((!(hasConstOther)) || ((other.type) == (NodeType.PRODUCT))));
+            Assert.True(((!(hasConst)) || ((this.children[0].type) == (NodeType.CONSTANT))));
+            Assert.True(((!(hasConstOther)) || ((other.children[0].type) == (NodeType.CONSTANT))));
             if (hasConst)
             {
                 if (hasConstOther)
                 {
                     return this.__equals_neglecting_constants_both_const(other);
                 }
-                return other.__equals_neglecting_constants_other_const(self);
+                return other.__equals_neglecting_constants_other_const(this);
             }
             if (hasConstOther)
             {
@@ -1315,24 +1393,24 @@ namespace Gamba.Prototyping.Transpiled
             return this.Equals(other);
         }
 
-        public bool __equals_neglecting_constants_other_const(dynamic other)
+        public bool __equals_neglecting_constants_other_const(Node other)
         {
-            Assert.True(other.type == NodeType.PRODUCT);
-            Assert.True(other.children[0].type == NodeType.CONSTANT);
-            Assert.True((this.type != NodeType.PRODUCT || this.children[0].type != NodeType.CONSTANT));
-            if (other.children.Count() == 2)
+            Assert.True((other.type) == (NodeType.PRODUCT));
+            Assert.True((other.children[0].type) == (NodeType.CONSTANT));
+            Assert.True((((this.type) != (NodeType.PRODUCT)) || ((this.children[0].type) != (NodeType.CONSTANT))));
+            if ((other.children.Count()) == (2))
             {
                 return this.Equals(other.children[1]);
             }
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return false;
             }
-            if (this.children.Count() != other.children.Count() - 1)
+            if ((this.children.Count()) != (((other.children.Count()) - (1))))
             {
                 return false;
             }
-            var oIndices = list(range(1, other.children.Count()));
+            List<int> oIndices = new(Range.Get(1, other.children.Count()));
             foreach (var child in this.children)
             {
                 var found = false;
@@ -1340,7 +1418,7 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     if (child.Equals(other.children[i]))
                     {
-                        oIndices.remove(i);
+                        oIndices.Remove(i);
                         found = true;
                     }
                 }
@@ -1352,21 +1430,21 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public bool __equals_neglecting_constants_both_const(dynamic other)
+        public bool __equals_neglecting_constants_both_const(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(this.children[0].type == NodeType.CONSTANT);
-            Assert.True(other.type == NodeType.PRODUCT);
-            Assert.True(other.children[0].type == NodeType.CONSTANT);
-            if (this.children.Count() != other.children.Count())
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((this.children[0].type) == (NodeType.CONSTANT));
+            Assert.True((other.type) == (NodeType.PRODUCT));
+            Assert.True((other.children[0].type) == (NodeType.CONSTANT));
+            if ((this.children.Count()) != (other.children.Count()))
             {
                 return false;
             }
-            if (this.children.Count() == 2)
+            if ((this.children.Count()) == (2))
             {
                 return this.children[1].Equals(other.children[1]);
             }
-            var oIndices = list(range(1, other.children.Count()));
+            var oIndices = new(Range.Get(1, other.children.Count()));
             foreach (var child in this.children.Slice(1, null, null))
             {
                 var found = false;
@@ -1374,7 +1452,7 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     if (child.Equals(other.children[i]))
                     {
-                        oIndices.remove(i);
+                        oIndices.Remove(i);
                         found = true;
                     }
                 }
@@ -1388,7 +1466,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __resolve_inverse_nodes()
         {
-            if (((new List<dynamic>() { NodeType.INCL_DISJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.CONJUNCTION }).Contains(this.type)))
+            List<NodeType> types = new() { NodeType.INCL_DISJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.CONJUNCTION };
+            if (((types).Contains(this.type)))
             {
                 this.__resolve_inverse_nodes_bitwise();
             }
@@ -1399,36 +1478,36 @@ namespace Gamba.Prototyping.Transpiled
             var i = 0;
             while (true)
             {
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
-                var neg1 = child1.type == NodeType.NEGATION;
-                foreach (var j in range(i + 1, this.children.Count()))
+                var neg1 = (child1.type) == (NodeType.NEGATION);
+                foreach (var j in Range.Get(((i) + (1)), this.children.Count()))
                 {
                     var child2 = this.children[j];
                     if (!(child1.__is_bitwise_inverse(child2)))
                     {
                         continue;
                     }
-                    if ((this.type != NodeType.EXCL_DISJUNCTION || this.children.Count() == 2))
+                    if ((((this.type) != (NodeType.EXCL_DISJUNCTION)) || ((this.children.Count()) == (2))))
                     {
-                        this.copy(this.__new_constant_node((this.type == NodeType.CONJUNCTION) ? 0 : -(1)));
+                        this.copy(this.__new_constant_node(((this.type) == (NodeType.CONJUNCTION)) ? 0 : -(1)));
                         return;
                     }
                     this.children.RemoveAt(j);
                     this.children.RemoveAt(i);
-                    if (this.children[0].type == NodeType.CONSTANT)
+                    if ((this.children[0].type) == (NodeType.CONSTANT))
                     {
-                        this.children[0].__set_and_reduce_constant(-(1) ^ this.children[0].constant);
+                        this.children[0].__set_and_reduce_constant(((-(1)) ^ (this.children[0].constant)));
                         i -= 1;
                     }
                     else
                     {
                         this.children.Insert(0, this.__new_constant_node(-(1)));
                     }
-                    if (this.children.Count() == 1)
+                    if ((this.children.Count()) == (1))
                     {
                         this.copy(this.children[0]);
                         return;
@@ -1439,24 +1518,24 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public dynamic __is_bitwise_inverse(dynamic other)
+        public bool __is_bitwise_inverse(Node other)
         {
-            if (this.type == NodeType.NEGATION)
+            if ((this.type) == (NodeType.NEGATION))
             {
-                if (other.type == NodeType.NEGATION)
+                if ((other.type) == (NodeType.NEGATION))
                 {
                     return this.children[0].__is_bitwise_inverse(other.children[0]);
                 }
                 return this.children[0].Equals(other);
             }
-            if (other.type == NodeType.NEGATION)
+            if ((other.type) == (NodeType.NEGATION))
             {
                 return this.Equals(other.children[0]);
             }
             var node = this.get_copy();
-            if ((node.type == NodeType.PRODUCT && node.children.Count() == 2 && node.children[0].type == NodeType.CONSTANT))
+            if ((((node.type) == (NodeType.PRODUCT)) && ((node.children.Count()) == (2)) && ((node.children[0].type) == (NodeType.CONSTANT))))
             {
-                if (node.children[1].type == NodeType.SUM)
+                if ((node.children[1].type) == (NodeType.SUM))
                 {
                     foreach (var n in node.children[1].children)
                     {
@@ -1466,9 +1545,9 @@ namespace Gamba.Prototyping.Transpiled
                 }
             }
             var onode = other.get_copy();
-            if ((onode.type == NodeType.PRODUCT && onode.children.Count() == 2 && onode.children[0].type == NodeType.CONSTANT))
+            if ((((onode.type) == (NodeType.PRODUCT)) && ((onode.children.Count()) == (2)) && ((onode.children[0].type) == (NodeType.CONSTANT))))
             {
-                if (onode.children[1].type == NodeType.SUM)
+                if ((onode.children[1].type) == (NodeType.SUM))
                 {
                     foreach (var n in onode.children[1].children)
                     {
@@ -1477,11 +1556,11 @@ namespace Gamba.Prototyping.Transpiled
                     onode.copy(onode.children[1]);
                 }
             }
-            if (node.type == NodeType.SUM)
+            if ((node.type) == (NodeType.SUM))
             {
-                if (onode.type != NodeType.SUM)
+                if ((onode.type) != (NodeType.SUM))
                 {
-                    if ((node.children.Count() > 2 || !(node.children[0].__is_constant(-(1)))))
+                    if ((((node.children.Count()) > (2)) || (!(node.children[0].__is_constant(-(1))))))
                     {
                         return false;
                     }
@@ -1492,15 +1571,15 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     child.__multiply_by_minus_one();
                 }
-                if (node.children[0].type == NodeType.CONSTANT)
+                if ((node.children[0].type) == (NodeType.CONSTANT))
                 {
                     node.children[0].constant -= 1;
                     node.children[0].__reduce_constant();
                     if (node.children[0].__is_constant(0))
                     {
                         node.children.RemoveAt(0);
-                        Assert.True(node.children.Count() >= 1);
-                        if (this.children.Count() == 1)
+                        Assert.True((node.children.Count()) >= (1));
+                        if ((this.children.Count()) == (1))
                         {
                             return false;
                         }
@@ -1512,11 +1591,11 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return node.Equals(onode);
             }
-            if (onode.type != NodeType.SUM)
+            if ((onode.type) != (NodeType.SUM))
             {
                 return false;
             }
-            if ((onode.children.Count() > 2 || !(onode.children[0].__is_constant(-(1)))))
+            if ((((onode.children.Count()) > (2)) || (!(onode.children[0].__is_constant(-(1))))))
             {
                 return false;
             }
@@ -1526,24 +1605,24 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __remove_trivial_nodes()
         {
-            if (this.type < NodeType.PRODUCT)
+            if ((this.type) < (NodeType.PRODUCT))
             {
                 return;
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
         }
 
-        public dynamic __refine_step_2(void parent = null, bool restrictedScope = false)
+        public bool __refine_step_2(Node parent = null, bool restrictedScope = false)
         {
             var changed = false;
             if (!(restrictedScope))
             {
                 foreach (var c in this.children)
                 {
-                    if (c.__refine_step_2(self))
+                    if (c.__refine_step_2(this))
                     {
                         changed = true;
                     }
@@ -1690,30 +1769,33 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __eliminate_nested_negations_advanced()
         {
-            if (this.type == NodeType.NEGATION)
+            Node child = null;
+            Node node = null;
+            if ((this.type) == (NodeType.NEGATION))
             {
-                var child = this.children[0];
-                if (child.type == NodeType.NEGATION)
+                child = this.children[0];
+                if ((child.type) == (NodeType.NEGATION))
                 {
                     this.copy(child.children[0]);
                     return true;
                 }
-                var node = child.__get_opt_transformed_negated();
-                if (node != null)
+                node = child.__get_opt_transformed_negated();
+                if ((node) != (null))
                 {
                     this.copy(node);
                     return true;
                 }
-                if ((child.type == NodeType.SUM && child.children[0].__is_constant(-(1))))
+                if ((((child.type) == (NodeType.SUM)) && (child.children[0].__is_constant(-(1)))))
                 {
                     this.type = NodeType.SUM;
                     this.children = child.children.Slice(1, null, null);
-                    foreach (var child in this.children)
+                    foreach (var newChild in this.children)
                     {
+                        child = newChild;
                         child.__multiply_by_minus_one();
                     }
-                    Assert.True(this.children.Count() >= 1);
-                    if (this.children.Count() == 1)
+                    Assert.True((this.children.Count()) >= (1));
+                    if ((this.children.Count()) == (1))
                     {
                         this.copy(this.children[0]);
                     }
@@ -1722,17 +1804,17 @@ namespace Gamba.Prototyping.Transpiled
                 return false;
             }
             child = this.__get_opt_transformed_negated();
-            if (child == null)
+            if ((child) == (null))
             {
                 return false;
             }
-            if (child.type == NodeType.NEGATION)
+            if ((child.type) == (NodeType.NEGATION))
             {
                 this.copy(child.children[0]);
                 return true;
             }
             node = child.__get_opt_transformed_negated();
-            if (node != null)
+            if ((node) != (null))
             {
                 this.copy(node);
                 return true;
@@ -1740,18 +1822,18 @@ namespace Gamba.Prototyping.Transpiled
             return false;
         }
 
-        public void __multiply(dynamic factor)
+        public void __multiply(long factor)
         {
-            if (factor - 1 % this.__modulus == 0)
+            if ((((((factor) - (1))) % (this.__modulus))) == (0))
             {
                 return;
             }
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                this.__set_and_reduce_constant(this.constant * factor);
+                this.__set_and_reduce_constant(((this.constant) * (factor)));
                 return;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 foreach (var child in this.children)
                 {
@@ -1759,20 +1841,20 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return;
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                if (this.children[0].type == NodeType.PRODUCT)
+                if ((this.children[0].type) == (NodeType.PRODUCT))
                 {
                     this.children.Slice(1, 1, null) = this.children[0].children.Slice(1, null, null);
                     this.children[0] = this.children[0].children[0];
                 }
-                if (this.children[0].type == NodeType.CONSTANT)
+                if ((this.children[0].type) == (NodeType.CONSTANT))
                 {
                     this.children[0].__multiply(factor);
                     if (this.children[0].__is_constant(1))
                     {
                         this.children.RemoveAt(0);
-                        if (this.children.Count() == 1)
+                        if ((this.children.Count()) == (1))
                         {
                             this.copy(this.children[0]);
                         }
@@ -1791,8 +1873,9 @@ namespace Gamba.Prototyping.Transpiled
             }
             var fac = this.__new_constant_node(factor);
             var node = this.__new_node(NodeType.CONSTANT);
-            node.copy(self);
-            var prod = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { fac, node });
+            node.copy(this);
+            List<Node> prod_children = new() { fac, node };
+            var prod = this.__new_node_with_children(NodeType.PRODUCT, prod_children);
             this.copy(prod);
         }
 
@@ -1801,23 +1884,23 @@ namespace Gamba.Prototyping.Transpiled
             this.__multiply(-(1));
         }
 
-        public void __get_opt_transformed_negated()
+        public Node __get_opt_transformed_negated()
         {
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 return this.__get_opt_transformed_negated_sum();
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 return this.__get_opt_transformed_negated_product();
             }
             return null;
         }
 
-        public dynamic __get_opt_transformed_negated_sum()
+        public Node __get_opt_transformed_negated_sum()
         {
-            Assert.True(this.type == NodeType.SUM);
-            if (this.children.Count() < 2)
+            Assert.True((this.type) == (NodeType.SUM));
+            if ((this.children.Count()) < (2))
             {
                 return null;
             }
@@ -1826,14 +1909,14 @@ namespace Gamba.Prototyping.Transpiled
                 return null;
             }
             var res = this.__new_node(NodeType.SUM);
-            foreach (var i in range(1, this.children.Count()))
+            foreach (var i in Range.Get(1, this.children.Count()))
             {
                 var child = this.children[i];
-                var hasMinusOne = (child.type == NodeType.PRODUCT && child.children[0].__is_constant(-(1)));
+                var hasMinusOne = (((child.type) == (NodeType.PRODUCT)) && (child.children[0].__is_constant(-(1))));
                 if (hasMinusOne)
                 {
-                    Assert.True(child.children.Count() > 1);
-                    if (child.children.Count() == 2)
+                    Assert.True((child.children.Count()) > (1));
+                    if ((child.children.Count()) == (2))
                     {
                         res.children.Add(child.children[1]);
                         continue;
@@ -1847,18 +1930,18 @@ namespace Gamba.Prototyping.Transpiled
                     res.children.Add(node);
                 }
             }
-            Assert.True(res.children.Count() > 0);
-            if (res.children.Count() == 1)
+            Assert.True((res.children.Count()) > (0));
+            if ((res.children.Count()) == (1))
             {
                 return res.children[0];
             }
             return res;
         }
 
-        public dynamic __get_opt_transformed_negated_product()
+        public Node __get_opt_transformed_negated_product()
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            if (this.children.Count() != 2)
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
@@ -1867,7 +1950,7 @@ namespace Gamba.Prototyping.Transpiled
                 return null;
             }
             var child1 = this.children[1];
-            if (child1.type != NodeType.SUM)
+            if ((child1.type) != (NodeType.SUM))
             {
                 return null;
             }
@@ -1875,64 +1958,66 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return null;
             }
-            if (child1.children.Count() < 2)
+            if ((child1.children.Count()) < (2))
             {
                 return null;
             }
-            if (child1.children.Count() == 2)
+            if ((child1.children.Count()) == (2))
             {
                 return child1.children[1];
             }
             return this.__new_node_with_children(NodeType.SUM, child1.children.Slice(1, null, null));
         }
 
-        public bool __check_bitwise_negations(dynamic parent)
+        public bool __check_bitwise_negations(Node parent)
         {
-            if (this.type == NodeType.NEGATION)
+            if ((this.type) == (NodeType.NEGATION))
             {
-                if ((parent != null && parent.__is_bitwise_op()))
+                if ((((parent) != (null)) && (parent.__is_bitwise_op())))
                 {
                     return false;
                 }
-                if (this.children[0].type == NodeType.PRODUCT)
+                if ((this.children[0].type) == (NodeType.PRODUCT))
                 {
                     this.__substitute_bitwise_negation_product();
                     return true;
                 }
-                if (this.children[0].type == NodeType.SUM)
+                if ((this.children[0].type) == (NodeType.SUM))
                 {
                     this.__substitute_bitwise_negation_sum();
                     return true;
                 }
                 return this.__substitute_bitwise_negation_generic(parent);
             }
-            if ((parent == null || !(parent.__is_bitwise_op())))
+            if ((((parent) == (null)) || (!(parent.__is_bitwise_op()))))
             {
                 return false;
             }
             var child = this.__get_opt_transformed_negated();
-            if (child == null)
+            if ((child) == (null))
             {
                 return false;
             }
             this.type = NodeType.NEGATION;
-            this.children = new List<dynamic>() { child };
+            this.children = new() { child };
             return true;
         }
 
         public bool __is_bitwise_op()
         {
-            return (this.type == NodeType.NEGATION || this.__is_bitwise_binop());
+            return (((this.type) == (NodeType.NEGATION)) || (this.__is_bitwise_binop()));
         }
 
         public bool __is_bitwise_binop()
         {
-            return ((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(this.type));
+            List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.INCL_DISJUNCTION };
+            return ((types).Contains(this.type));
         }
 
         public bool __is_arithm_op()
         {
-            return ((new List<dynamic>() { NodeType.SUM, NodeType.PRODUCT, NodeType.POWER }).Contains(this.type));
+            List<NodeType> types = new() { NodeType.SUM, NodeType.PRODUCT, NodeType.POWER };
+            return ((types).Contains(this.type));
         }
 
         public void __substitute_bitwise_negation_product()
@@ -1940,7 +2025,7 @@ namespace Gamba.Prototyping.Transpiled
             this.type = NodeType.SUM;
             this.children.Insert(0, this.__new_constant_node(-(1)));
             var child = this.children[1];
-            if (child.children[0].type == NodeType.CONSTANT)
+            if ((child.children[0].type) == (NodeType.CONSTANT))
             {
                 child.children[0].__set_and_reduce_constant(-(child.children[0].constant));
             }
@@ -1955,9 +2040,9 @@ namespace Gamba.Prototyping.Transpiled
             this.type = NodeType.PRODUCT;
             this.children.Insert(0, this.__new_constant_node(-(1)));
             var child = this.children[1];
-            if (child.children[0].type == NodeType.CONSTANT)
+            if ((child.children[0].type) == (NodeType.CONSTANT))
             {
-                child.children[0].__set_and_reduce_constant(child.children[0].constant + 1);
+                child.children[0].__set_and_reduce_constant(((child.children[0].constant) + (1)));
             }
             else
             {
@@ -1965,27 +2050,28 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public bool __substitute_bitwise_negation_generic(dynamic parent)
+        public bool __substitute_bitwise_negation_generic(Node parent)
         {
-            Assert.True(this.type == NodeType.NEGATION);
-            if (parent == null)
+            Assert.True((this.type) == (NodeType.NEGATION));
+            if ((parent) == (null))
             {
                 return false;
             }
-            if ((parent.type != NodeType.SUM && parent.type != NodeType.PRODUCT))
+            if ((((parent.type) != (NodeType.SUM)) && ((parent.type) != (NodeType.PRODUCT))))
             {
                 return false;
             }
-            if (parent.type == NodeType.PRODUCT)
+            if ((parent.type) == (NodeType.PRODUCT))
             {
-                if ((parent.children.Count() > 2 || parent.children[0].type != NodeType.CONSTANT))
+                if ((((parent.children.Count()) > (2)) || ((parent.children[0].type) != (NodeType.CONSTANT))))
                 {
                     return false;
                 }
             }
-            var prod = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.__new_constant_node(-(1)), this.children[0] });
+            List<Node> prod_children = new() { this.__new_constant_node(-(1)), this.children[0] };
+            var prod = this.__new_node_with_children(NodeType.PRODUCT, prod_children);
             this.type = NodeType.SUM;
-            this.children = new List<dynamic>() { this.__new_constant_node(-(1)), prod };
+            this.children = new() { this.__new_constant_node(-(1)), prod };
             return true;
         }
 
@@ -1996,32 +2082,32 @@ namespace Gamba.Prototyping.Transpiled
                 return false;
             }
             var e = this.__get_max_factor_power_of_two_in_children();
-            if (e <= 0)
+            if ((e) <= (0))
             {
                 return false;
             }
-            var c = null;
-            if (this.children[0].type == NodeType.CONSTANT)
+            NullableI64 c = null;
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
                 c = this.children[0].constant;
             }
-            var add = null;
+            NullableI64 add = null;
             foreach (var child in this.children)
             {
                 var rem = child.__divide_by_power_of_two(e);
-                if (add == null)
+                if ((add) == (null))
                 {
                     add = rem;
                 }
                 else
                 {
-                    if (this.type == NodeType.CONJUNCTION)
+                    if ((this.type) == (NodeType.CONJUNCTION))
                     {
                         add &= rem;
                     }
                     else
                     {
-                        if (this.type == NodeType.INCL_DISJUNCTION)
+                        if ((this.type) == (NodeType.INCL_DISJUNCTION))
                         {
                             add |= rem;
                         }
@@ -2033,130 +2119,133 @@ namespace Gamba.Prototyping.Transpiled
                 }
             }
             var prod = this.__new_node(NodeType.PRODUCT);
-            prod.children = new List<dynamic>() { this.__new_constant_node(2 * *e), this.__get_shallow_copy() };
+            prod.children = new() { this.__new_constant_node(LongPower(2, e)), this.__get_shallow_copy() };
             this.copy(prod);
-            if (add % this.__modulus != 0)
+            if ((((add) % (this.__modulus))) != (0))
             {
                 var constNode = this.__new_constant_node(add);
-                var sumNode = this.__new_node_with_children(NodeType.SUM, new List<dynamic>() { constNode, this.__get_shallow_copy() });
+                List<Node> sum_children = new() { constNode, this.__get_shallow_copy() };
+                var sumNode = this.__new_node_with_children(NodeType.SUM, sum_children);
                 this.copy(sumNode);
             }
             return true;
         }
 
-        public dynamic __get_max_factor_power_of_two_in_children(bool allowRem = true)
+        public long __get_max_factor_power_of_two_in_children(bool allowRem = true)
         {
-            Assert.True(this.children.Count() > 1);
-            Assert.True((this.__is_bitwise_binop() || this.type == NodeType.SUM));
-            var withNeg = (allowRem && this.__is_bitwise_binop());
+            Assert.True((this.children.Count()) > (1));
+            Assert.True(((this.__is_bitwise_binop()) || ((this.type) == (NodeType.SUM))));
+            var withNeg = ((allowRem) && (this.__is_bitwise_binop()));
             var maxe = this.children[0].__get_max_factor_power_of_two(withNeg);
-            if ((allowRem && this.children[0].type == NodeType.CONSTANT))
+            if (((allowRem) && ((this.children[0].type) == (NodeType.CONSTANT))))
             {
                 maxe = -(1);
             }
-            if (maxe == 0)
+            if ((maxe) == (0))
             {
                 return 0;
             }
             foreach (var child in this.children.Slice(1, null, null))
             {
                 var e = child.__get_max_factor_power_of_two(withNeg);
-                if (e == 0)
+                if ((e) == (0))
                 {
                     return 0;
                 }
-                if (e == -(1))
+                if ((e) == (-(1)))
                 {
                     continue;
                 }
-                maxe = (maxe == -(1)) ? e : min(maxe, e);
+                maxe = ((maxe) == (-(1))) ? e : Math.Min(maxe, e);
             }
             return maxe;
         }
 
-        public ulong __get_max_factor_power_of_two(dynamic allowRem)
+        public long __get_max_factor_power_of_two(bool allowRem)
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 return trailing_zeros(this.constant);
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 return this.children[0].__get_max_factor_power_of_two(false);
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 return this.__get_max_factor_power_of_two_in_children(allowRem);
             }
-            if ((allowRem && this.type == NodeType.NEGATION))
+            if (((allowRem) && ((this.type) == (NodeType.NEGATION))))
             {
                 return this.children[0].__get_max_factor_power_of_two(false);
             }
             return 0;
         }
 
-        public dynamic __divide_by_power_of_two(dynamic e)
+        public long __divide_by_power_of_two(long ee)
         {
-            if (this.type == NodeType.CONSTANT)
+            var e = Convert.ToInt32(ee);
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 var orig = this.constant;
                 this.constant >>= e;
-                return orig - this.constant << e;
+                return ((orig) - (((this.constant) << (e))));
             }
-            if (this.type == NodeType.PRODUCT)
+            long rem = 0;
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                var rem = this.children[0].__divide_by_power_of_two(e);
-                Assert.True(rem == 0);
+                rem = this.children[0].__divide_by_power_of_two(e);
+                Assert.True((rem) == (0));
                 if (this.children[0].__is_constant(1))
                 {
                     this.children.RemoveAt(0);
-                    if (this.children.Count() == 1)
+                    if ((this.children.Count()) == (1))
                     {
                         this.copy(this.children[0]);
                     }
                 }
                 return 0;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
-                var add = 0;
+                long add = 0;
                 foreach (var child in this.children)
                 {
                     rem = child.__divide_by_power_of_two(e);
-                    if (rem != 0)
+                    if ((rem) != (0))
                     {
-                        Assert.True(add == 0);
+                        Assert.True((add) == (0));
                         add = rem;
                     }
                 }
                 if (this.children[0].__is_constant(0))
                 {
                     this.children.RemoveAt(0);
-                    if (this.children.Count() == 1)
+                    if ((this.children.Count()) == (1))
                     {
                         this.copy(this.children[0]);
                     }
                 }
                 return add;
             }
-            Assert.True(this.type == NodeType.NEGATION);
+            Assert.True((this.type) == (NodeType.NEGATION));
             rem = this.children[0].__divide_by_power_of_two(e);
-            Assert.True(rem == 0);
-            return 1 << e - 1;
+            Assert.True((rem) == (0));
+            return ((((1) << (e))) - (1));
         }
 
-        public dynamic __check_beautify_constants_in_products()
+        public bool __check_beautify_constants_in_products()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return false;
             }
-            if (this.children[0].type != NodeType.CONSTANT)
+            if ((this.children[0].type) != (NodeType.CONSTANT))
             {
                 return false;
             }
-            var e = trailing_zeros(this.children[0].constant);
-            if (e <= 0)
+            trailing_zeros(this.children[0].constant);
+            if ((e) <= (0))
             {
                 return false;
             }
@@ -2172,9 +2261,11 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public bool __check_beautify_constants(dynamic e)
+        public bool __check_beautify_constants(int ee)
         {
-            if ((this.__is_bitwise_op() || ((new List<dynamic>() { NodeType.SUM, NodeType.PRODUCT }).Contains(this.type))))
+            var e = Convert.ToInt32(ee);
+            List<NodeType> types = new() { NodeType.SUM, NodeType.PRODUCT };
+            if (((this.__is_bitwise_op()) || (((types).Contains(this.type)))))
             {
                 var changed = false;
                 foreach (var child in this.children)
@@ -2187,37 +2278,38 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return changed;
             }
-            if (this.type != NodeType.CONSTANT)
+            if ((this.type) != (NodeType.CONSTANT))
             {
                 return false;
             }
             var orig = this.constant;
-            var mask = -(1) % this.__modulus >> e;
-            var b = this.constant & this.__modulus >> e + 1;
+            var mask = ((((-(1)) % (this.__modulus))) >> (e));
+            var b = ((this.constant) & (((this.__modulus) >> (((e) + (1))))));
             this.constant &= mask;
-            if (b > 0)
+            if ((b) > (0))
             {
-                if ((popcount(this.constant) > 1 || b == 1))
+                if ((((popcount(this.constant)) > (1)) || ((b) == (1))))
                 {
                     this.constant |= ~(mask);
                 }
             }
             this.__reduce_constant();
-            return this.constant != orig;
+            return (this.constant) != (orig);
         }
 
         public bool __check_move_in_bitwise_negations()
         {
-            if (this.type != NodeType.NEGATION)
+            if ((this.type) != (NodeType.NEGATION))
             {
                 return false;
             }
             var childType = this.children[0].type;
-            if (childType == NodeType.EXCL_DISJUNCTION)
+            if ((childType) == (NodeType.EXCL_DISJUNCTION))
             {
                 return this.__check_move_in_bitwise_negation_excl_disj();
             }
-            if (((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(childType)))
+            List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION };
+            if (((types).Contains(childType)))
             {
                 return this.__check_move_in_bitwise_negation_conj_or_incl_disj();
             }
@@ -2226,14 +2318,14 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_move_in_bitwise_negation_conj_or_incl_disj()
         {
-            Assert.True(this.type == NodeType.NEGATION);
+            Assert.True((this.type) == (NodeType.NEGATION));
             var child = this.children[0];
             if (!(child.__is_any_child_negated()))
             {
                 return false;
             }
             child.__negate_all_children();
-            child.type = (child.type == NodeType.CONJUNCTION) ? NodeType.INCL_DISJUNCTION : NodeType.CONJUNCTION;
+            child.type = ((child.type) == (NodeType.CONJUNCTION)) ? NodeType.INCL_DISJUNCTION : NodeType.CONJUNCTION;
             this.copy(child);
             return true;
         }
@@ -2242,12 +2334,12 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var child in this.children)
             {
-                if (child.type == NodeType.NEGATION)
+                if ((child.type) == (NodeType.NEGATION))
                 {
                     return true;
                 }
                 var node = child.__get_opt_transformed_negated();
-                if (node != null)
+                if ((node) != (null))
                 {
                     return true;
                 }
@@ -2265,27 +2357,28 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __negate()
         {
-            if (this.type == NodeType.NEGATION)
+            if ((this.type) == (NodeType.NEGATION))
             {
                 this.copy(this.children[0]);
                 return;
             }
             var node = this.__get_opt_transformed_negated();
-            if (node != null)
+            if ((node) != (null))
             {
                 this.copy(node);
                 return;
             }
-            node = this.__new_node_with_children(NodeType.NEGATION, new List<dynamic>() { this.get_copy() });
+            List<Node> neg_children = new() { this.get_copy() };
+            node = this.__new_node_with_children(NodeType.NEGATION, neg_children);
             this.copy(node);
         }
 
         public bool __check_move_in_bitwise_negation_excl_disj()
         {
-            Assert.True(this.type == NodeType.NEGATION);
+            Assert.True((this.type) == (NodeType.NEGATION));
             var child = this.children[0];
             var (n, _) = child.__get_recursively_negated_child();
-            if (n == null)
+            if ((n) == (null))
             {
                 return false;
             }
@@ -2294,54 +2387,54 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public dynamic __get_recursively_negated_child(void maxDepth = null)
+        public (Node, NullableI32) __get_recursively_negated_child(NullableI32 maxDepth = null)
         {
-            if (this.type == NodeType.NEGATION)
+            if ((this.type) == (NodeType.NEGATION))
             {
-                return (self, 0);
+                return (this, 0);
             }
             var node = this.__get_opt_transformed_negated();
-            if (node != null)
+            if ((node) != (null))
             {
-                return (self, 0);
+                return (this, 0);
             }
-            if ((maxDepth != null && maxDepth == 0))
+            if ((((maxDepth) != (null)) && ((maxDepth) == (0))))
             {
-                return null;
+                return (null, null);
             }
             if (!(this.__is_bitwise_binop()))
             {
                 return (null, null);
             }
-            var opt = null;
-            var candidate = null;
-            var nextMax = (maxDepth == null) ? null : maxDepth - 1;
+            NullableI32 opt = null;
+            Node candidate = null;
+            NullableI32 nextMax = ((maxDepth) == (null)) ? null : ((maxDepth) - (1));
             foreach (var child in this.children)
             {
                 var (_, d) = child.__get_recursively_negated_child(nextMax);
-                if (d == null)
+                if ((d) == (null))
                 {
                     continue;
                 }
-                if (maxDepth == null)
+                if ((maxDepth) == (null))
                 {
-                    return (child, d + 1);
+                    return (child, ((d) + (1)));
                 }
-                Assert.True((opt == null || d < opt));
+                Assert.True((((opt) == (null)) || ((d) < (opt))));
                 opt = d;
                 candidate = child;
-                nextMax = opt - 1;
+                nextMax = ((opt) - (1));
             }
             return (candidate, opt);
         }
 
-        public dynamic __check_bitwise_negations_in_excl_disjunctions()
+        public bool __check_bitwise_negations_in_excl_disjunctions()
         {
-            if (this.type != NodeType.EXCL_DISJUNCTION)
+            if ((this.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return false;
             }
-            var neg = null;
+            Node neg = null;
             var changed = false;
             foreach (var child in this.children)
             {
@@ -2349,7 +2442,7 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     continue;
                 }
-                if (neg == null)
+                if ((neg) == (null))
                 {
                     neg = child;
                     continue;
@@ -2364,80 +2457,81 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __is_negated()
         {
-            if (this.type == NodeType.NEGATION)
+            if ((this.type) == (NodeType.NEGATION))
             {
                 return true;
             }
             var node = this.__get_opt_transformed_negated();
-            return node != null;
+            return (node) != (null);
         }
 
-        public bool __check_rewrite_powers(dynamic parent)
+        public bool __check_rewrite_powers(Node parent)
         {
-            if (this.type != NodeType.POWER)
+            if ((this.type) != (NodeType.POWER))
             {
                 return false;
             }
             var exp = this.children[1];
-            if (exp.type != NodeType.CONSTANT)
+            if ((exp.type) != (NodeType.CONSTANT))
             {
                 return false;
             }
-            var base = this.children[0];
-            if (base.type != NodeType.PRODUCT)
+            var _base = this.children[0];
+            if ((_base.type) != (NodeType.PRODUCT))
             {
                 return false;
             }
-            if (base.children[0].type != NodeType.CONSTANT)
+            if ((_base.children[0].type) != (NodeType.CONSTANT))
             {
                 return false;
             }
-            var const = this.__power(base.children[0].constant, exp.constant);
-            base.children.RemoveAt(0);
-            if (base.children.Count() == 1)
+            var _const = this.__power(_base.children[0].constant, exp.constant);
+            _base.children.RemoveAt(0);
+            if ((_base.children.Count()) == (1))
             {
-                base.copy(base.children[0]);
+                _base.copy(_base.children[0]);
             }
-            if (const == 1) {
+            if ((_const) == (1))
+            {
                 return true;
             }
-            if ((parent != null && parent.type == NodeType.PRODUCT))
+            if ((((parent) != (null)) && ((parent.type) == (NodeType.PRODUCT))))
             {
-                if (parent.children[0].type == NodeType.PRODUCT)
+                if ((parent.children[0].type) == (NodeType.PRODUCT))
                 {
-                    parent.children[0].__set_and_reduce_constant(parent.children[0].constant * const);
+                    parent.children[0].__set_and_reduce_constant(((parent.children[0].constant) * (_const)));
                 }
                 else
                 {
-                    parent.children.Insert(0, this.__new_constant_node(const));
+                    parent.children.Insert(0, this.__new_constant_node(_const));
                 }
             }
             else
             {
                 var prod = this.__new_node(NodeType.PRODUCT);
-                prod.children.Add(this.__new_constant_node(const));
+                prod.children.Add(this.__new_constant_node(_const));
                 prod.children.Add(this.__get_shallow_copy());
                 this.copy(prod);
             }
             return true;
         }
 
-        public dynamic __check_resolve_product_of_powers()
+        public bool __check_resolve_product_of_powers()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return false;
             }
             var changed = false;
-            var start = int(this.children[0].type == NodeType.CONSTANT);
-            foreach (var i in range(this.children.Count() - 1, start, -(1)))
+            var start = Convert.ToInt32((this.children[0].type) == (NodeType.CONSTANT));
+            foreach (var i in Range.Get(((this.children.Count()) - (1)), start, -(1)))
             {
                 var child = this.children[i];
                 var merged = false;
-                foreach (var j in range(start, i))
+                foreach (var j in Range.Get(start, i))
                 {
                     var child2 = this.children[j];
-                    if (child2.type == NodeType.POWER)
+                    if ((child2.type) == (NodeType.POWER))
                     {
                         var base2 = child2.children[0];
                         var exp2 = child2.children[1];
@@ -2448,7 +2542,7 @@ namespace Gamba.Prototyping.Transpiled
                             changed = true;
                             break;
                         }
-                        if ((child.type == NodeType.POWER && base2.Equals(child.children[0])))
+                        if ((((child.type) == (NodeType.POWER)) && (base2.Equals(child.children[0]))))
                         {
                             exp2.__add(child.children[1]);
                             this.children.RemoveAt(i);
@@ -2456,11 +2550,11 @@ namespace Gamba.Prototyping.Transpiled
                             break;
                         }
                     }
-                    if (child.type == NodeType.POWER)
+                    if ((child.type) == (NodeType.POWER))
                     {
-                        var base = child.children[0];
+                        var _base = child.children[0];
                         var exp = child.children[1];
-                        if (base.Equals(child2))
+                        if (_base.Equals(child2))
                         {
                             exp.__add_constant(1);
                             this.children[j] = this.children[i];
@@ -2471,61 +2565,64 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     if (child.Equals(child2))
                     {
-                        this.children[j] = this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { child, this.__new_constant_node(2) });
+                        List<Node> power_children = new() { child, this.__new_constant_node(2) };
+                        this.children[j] = this.__new_node_with_children(NodeType.POWER, power_children);
                         this.children.RemoveAt(i);
                         changed = true;
                         break;
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public void __add(dynamic other)
+        public void __add(Node other)
         {
-            if (this.type == NodeType.CONSTANT)
+            Node node = null;
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 var constant = this.constant;
                 this.copy(other.get_copy());
                 this.__add_constant(constant);
                 return;
             }
-            if (other.type == NodeType.CONSTANT)
+            if ((other.type) == (NodeType.CONSTANT))
             {
                 this.__add_constant(other.constant);
                 return;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 this.__add_to_sum(other);
                 return;
             }
-            if (other.type == NodeType.SUM)
+            if ((other.type) == (NodeType.SUM))
             {
-                var node = other.get_copy();
-                node.__add_to_sum(self);
+                node = other.get_copy();
+                node.__add_to_sum(this);
                 this.copy(node);
                 return;
             }
-            node = this.__new_node_with_children(NodeType.SUM, new List<dynamic>() { this.get_copy(), other.get_copy() });
+            List<Node> sum_children = new() { this.get_copy(), other.get_copy() };
+            node = this.__new_node_with_children(NodeType.SUM, sum_children);
             this.copy(node);
             this.__merge_similar_nodes_sum();
         }
 
-        public void __add_constant(dynamic constant)
+        public void __add_constant(long constant)
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                this.__set_and_reduce_constant(this.constant + constant);
+                this.__set_and_reduce_constant(((this.constant) + (constant)));
                 return;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
-                if ((this.children.Count() > 0 && this.children[0].type == NodeType.CONSTANT))
+                if ((((this.children.Count()) > (0)) && ((this.children[0].type) == (NodeType.CONSTANT))))
                 {
                     this.children[0].__add_constant(constant);
                     return;
@@ -2533,19 +2630,20 @@ namespace Gamba.Prototyping.Transpiled
                 this.children.Insert(0, this.__new_constant_node(constant));
                 return;
             }
-            var node = this.__new_node_with_children(NodeType.SUM, new List<dynamic>() { this.__new_constant_node(constant), this.get_copy() });
+            List<Node> sum_children = new() { this.__new_constant_node(constant), this.get_copy() };
+            var node = this.__new_node_with_children(NodeType.SUM, sum_children);
             this.copy(node);
         }
 
-        public void __add_to_sum(dynamic other)
+        public void __add_to_sum(Node other)
         {
-            Assert.True(this.type == NodeType.SUM);
-            Assert.True(other.type != NodeType.CONSTANT);
-            if (other.type == NodeType.SUM)
+            Assert.True((this.type) == (NodeType.SUM));
+            Assert.True((other.type) != (NodeType.CONSTANT));
+            if ((other.type) == (NodeType.SUM))
             {
                 foreach (var ochild in other.children)
                 {
-                    if (ochild.type == NodeType.CONSTANT)
+                    if ((ochild.type) == (NodeType.CONSTANT))
                     {
                         this.__add_constant(ochild.constant);
                     }
@@ -2564,27 +2662,27 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_resolve_product_of_constant_and_sum()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return false;
             }
-            if (this.children.Count() < 2)
+            if ((this.children.Count()) < (2))
             {
                 return false;
             }
             var child0 = this.children[0];
-            if (child0.type != NodeType.CONSTANT)
+            if ((child0.type) != (NodeType.CONSTANT))
             {
                 return false;
             }
             var child1 = this.children[1];
-            if (child1.type != NodeType.SUM)
+            if ((child1.type) != (NodeType.SUM))
             {
                 return false;
             }
             var constant = child0.constant;
-            var sumNode = self;
-            if (this.children.Count() == 2)
+            var sumNode = this;
+            if ((this.children.Count()) == (2))
             {
                 this.copy(child1);
             }
@@ -2593,20 +2691,20 @@ namespace Gamba.Prototyping.Transpiled
                 this.children.RemoveAt(0);
                 sumNode = this.children[0];
             }
-            foreach (var i in range(sumNode.children.Count()))
+            foreach (var i in Range.Get(sumNode.children.Count()))
             {
-                if (sumNode.children[i].type == NodeType.CONSTANT)
+                if ((sumNode.children[i].type) == (NodeType.CONSTANT))
                 {
-                    sumNode.children[i].__set_and_reduce_constant(sumNode.children[i].constant * constant);
+                    sumNode.children[i].__set_and_reduce_constant(((sumNode.children[i].constant) * (constant)));
                 }
                 else
                 {
-                    if (sumNode.children[i].type == NodeType.PRODUCT)
+                    if ((sumNode.children[i].type) == (NodeType.PRODUCT))
                     {
                         var first = sumNode.children[i].children[0];
-                        if (first.type == NodeType.CONSTANT)
+                        if ((first.type) == (NodeType.CONSTANT))
                         {
-                            first.__set_and_reduce_constant(first.constant * constant);
+                            first.__set_and_reduce_constant(((first.constant) * (constant)));
                         }
                         else
                         {
@@ -2615,7 +2713,7 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     else
                     {
-                        var factors = new List<dynamic>() { sumNode.__new_constant_node(constant), sumNode.children[i] };
+                        List<Node> factors = new() { sumNode.__new_constant_node(constant), sumNode.children[i] };
                         sumNode.children[i] = sumNode.__new_node_with_children(NodeType.PRODUCT, factors);
                     }
                 }
@@ -2625,35 +2723,37 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_factor_out_of_sum()
         {
-            if ((this.type != NodeType.SUM || this.children.Count() <= 1))
+            if ((((this.type) != (NodeType.SUM)) || ((this.children.Count()) <= (1))))
             {
                 return false;
             }
-            var factors = new List<dynamic>() { };
+            List<Node> factors = new() { };
             while (true)
             {
                 var factor = this.__try_factor_out_of_sum();
-                if (factor == null)
+                if ((factor) == (null))
                 {
                     break;
                 }
                 factors.Add(factor);
             }
-            if (factors.Count() == 0)
+            if ((factors.Count()) == (0))
             {
                 return false;
             }
-            var prod = this.__new_node_with_children(NodeType.PRODUCT, factors + new List<dynamic>() { this.get_copy() });
+            List<Node> prod_children = factors.copy();
+            prod_children.Add(this.get_copy());
+            var prod = this.__new_node_with_children(NodeType.PRODUCT, prod_children);
             this.copy(prod);
             return true;
         }
 
-        public dynamic __try_factor_out_of_sum()
+        public Node __try_factor_out_of_sum()
         {
-            Assert.True(this.type == NodeType.SUM);
-            Assert.True(this.children.Count() > 1);
+            Assert.True((this.type) == (NodeType.SUM));
+            Assert.True((this.children.Count()) > (1));
             var factor = this.__get_common_factor_in_sum();
-            if (factor == null)
+            if ((factor) == (null))
             {
                 return null;
             }
@@ -2664,15 +2764,17 @@ namespace Gamba.Prototyping.Transpiled
             return factor;
         }
 
-        public void __get_common_factor_in_sum()
+        public Node __get_common_factor_in_sum()
         {
-            Assert.True(this.type == NodeType.SUM);
+            Assert.True((this.type) == (NodeType.SUM));
             var first = this.children[0];
-            if (first.type == NodeType.PRODUCT)
+            Node exp = null;
+            Node _base = null;
+            if ((first.type) == (NodeType.PRODUCT))
             {
                 foreach (var child in first.children)
                 {
-                    if (child.type == NodeType.CONSTANT)
+                    if ((child.type) == (NodeType.CONSTANT))
                     {
                         continue;
                     }
@@ -2680,44 +2782,44 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         return child.get_copy();
                     }
-                    if (child.type == NodeType.POWER)
+                    if ((child.type) == (NodeType.POWER))
                     {
-                        var exp = child.children[1];
-                        if ((exp.type == NodeType.CONSTANT && !(exp.__is_constant(0))))
+                        exp = child.children[1];
+                        if ((((exp.type) == (NodeType.CONSTANT)) && (!(exp.__is_constant(0)))))
                         {
-                            var base = child.children[0];
-                            if (this.__has_factor_in_remaining_children(base))
+                            _base = child.children[0];
+                            if (this.__has_factor_in_remaining_children(_base))
                             {
-                                return base.get_copy();
+                                return _base.get_copy();
                             }
                         }
                     }
                 }
                 return null;
             }
-            if (first.type == NodeType.POWER)
+            if ((first.type) == (NodeType.POWER))
             {
                 exp = first.children[1];
-                if ((exp.type == NodeType.CONSTANT && !(exp.__is_constant(0))))
+                if ((((exp.type) == (NodeType.CONSTANT)) && (!(exp.__is_constant(0)))))
                 {
-                    base = first.children[0];
-                    if ((base.type != NodeType.CONSTANT && this.__has_factor_in_remaining_children(base)))
+                    _base = first.children[0];
+                    if ((((_base.type) != (NodeType.CONSTANT)) && (this.__has_factor_in_remaining_children(_base))))
                     {
-                        return base.get_copy();
+                        return _base.get_copy();
                     }
                 }
                 return null;
             }
-            if ((first.type != NodeType.CONSTANT && this.__has_factor_in_remaining_children(first)))
+            if ((((first.type) != (NodeType.CONSTANT)) && (this.__has_factor_in_remaining_children(first))))
             {
                 return first.get_copy();
             }
             return null;
         }
 
-        public bool __has_factor_in_remaining_children(dynamic factor)
+        public bool __has_factor_in_remaining_children(Node factor)
         {
-            Assert.True(this.type == NodeType.SUM);
+            Assert.True((this.type) == (NodeType.SUM));
             foreach (var child in this.children.Slice(1, null, null))
             {
                 if (!(child.__has_factor(factor)))
@@ -2728,16 +2830,16 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public dynamic __has_factor(dynamic factor)
+        public bool __has_factor(Node factor)
         {
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 return this.__has_factor_product(factor);
             }
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 var exp = this.children[1];
-                if ((exp.type == NodeType.CONSTANT && !(exp.__is_constant(0))))
+                if ((((exp.type) == (NodeType.CONSTANT)) && (!(exp.__is_constant(0)))))
                 {
                     return this.children[0].Equals(factor);
                 }
@@ -2745,19 +2847,19 @@ namespace Gamba.Prototyping.Transpiled
             return this.Equals(factor);
         }
 
-        public bool __has_factor_product(dynamic factor)
+        public bool __has_factor_product(Node factor)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
+            Assert.True((this.type) == (NodeType.PRODUCT));
             foreach (var child in this.children)
             {
                 if (child.Equals(factor))
                 {
                     return true;
                 }
-                if (child.type == NodeType.POWER)
+                if ((child.type) == (NodeType.POWER))
                 {
                     var exp = child.children[1];
-                    if ((exp.type == NodeType.CONSTANT && !(exp.__is_constant(0))))
+                    if ((((exp.type) == (NodeType.CONSTANT)) && (!(exp.__is_constant(0)))))
                     {
                         if (child.children[0].Equals(factor))
                         {
@@ -2769,14 +2871,14 @@ namespace Gamba.Prototyping.Transpiled
             return false;
         }
 
-        public bool __has_child(dynamic node)
+        public bool __has_child(Node node)
         {
-            return this.__get_index_of_child(node) != null;
+            return (this.__get_index_of_child(node)) != (null);
         }
 
-        public void __get_index_of_child(dynamic node)
+        public NullableI32 __get_index_of_child(Node node)
         {
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 if (this.children[i].Equals(node))
                 {
@@ -2786,9 +2888,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __get_index_of_child_negated(dynamic node)
+        public NullableI32 __get_index_of_child_negated(Node node)
         {
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 if (this.children[i].equals_negated(node))
                 {
@@ -2798,14 +2900,14 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __eliminate_factor(dynamic factor)
+        public void __eliminate_factor(Node factor)
         {
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 this.__eliminate_factor_product(factor);
                 return;
             }
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 this.__eliminate_factor_power(factor);
                 return;
@@ -2815,22 +2917,22 @@ namespace Gamba.Prototyping.Transpiled
             this.copy(c);
         }
 
-        public void __eliminate_factor_product(dynamic factor)
+        public void __eliminate_factor_product(Node factor)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
                 if (child.Equals(factor))
                 {
                     this.children.RemoveAt(i);
-                    if (this.children.Count() == 1)
+                    if ((this.children.Count()) == (1))
                     {
                         this.copy(this.children[0]);
                     }
                     return;
                 }
-                if ((child.type == NodeType.POWER && child.children[0].Equals(factor)))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(factor))))
                 {
                     child.__decrement_exponent();
                     return;
@@ -2839,9 +2941,9 @@ namespace Gamba.Prototyping.Transpiled
             Assert.True(false);
         }
 
-        public void __eliminate_factor_power(dynamic factor)
+        public void __eliminate_factor_power(Node factor)
         {
-            Assert.True(this.type == NodeType.POWER);
+            Assert.True((this.type) == (NodeType.POWER));
             if (this.Equals(factor))
             {
                 this.copy(this.__new_constant_node(1));
@@ -2853,8 +2955,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __decrement_exponent()
         {
-            Assert.True(this.type == NodeType.POWER);
-            Assert.True(this.children.Count() == 2);
+            Assert.True((this.type) == (NodeType.POWER));
+            Assert.True((this.children.Count()) == (2));
             this.children[1].__decrement();
             if (this.children[1].__is_constant(1))
             {
@@ -2874,20 +2976,20 @@ namespace Gamba.Prototyping.Transpiled
             this.__add_constant(-(1));
         }
 
-        public dynamic __check_resolve_inverse_negations_in_sum()
+        public bool __check_resolve_inverse_negations_in_sum()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var changed = false;
-            var const = 0;
+            var _const = 0;
             var i = this.children.Count();
-            while (i > 1)
+            while ((i) > (1))
             {
                 i -= 1;
                 var first = this.children[i];
-                foreach (var j in range(i))
+                foreach (var j in Range.Get(i))
                 {
                     var second = this.children[j];
                     if (first.equals_negated(second))
@@ -2895,20 +2997,20 @@ namespace Gamba.Prototyping.Transpiled
                         this.children.RemoveAt(i);
                         this.children.RemoveAt(j);
                         i -= 1;
-                        const -= 1;
+                        _const -= 1;
                         changed = true;
                         break;
                     }
-                    if (first.type != NodeType.PRODUCT)
+                    if ((first.type) != (NodeType.PRODUCT))
                     {
                         continue;
                     }
-                    if (second.type != NodeType.PRODUCT)
+                    if ((second.type) != (NodeType.PRODUCT))
                     {
                         continue;
                     }
                     var indices = first.__get_only_differing_child_indices(second);
-                    if (indices == null)
+                    if ((indices) == (null))
                     {
                         continue;
                     }
@@ -2917,7 +3019,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         this.children.RemoveAt(i);
                         second.children.RemoveAt(secIdx);
-                        if (second.children.Count() == 1)
+                        if ((second.children.Count()) == (1))
                         {
                             second.copy(second.children[0]);
                         }
@@ -2927,25 +3029,25 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if ((this.children.Count() > 0 && this.children[0].type == NodeType.CONSTANT))
+            if ((((this.children.Count()) > (0)) && ((this.children[0].type) == (NodeType.CONSTANT))))
             {
-                this.children[0].__set_and_reduce_constant(this.children[0].constant + const);
+                this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (_const)));
             }
             else
             {
-                this.children.Insert(0, this.__new_constant_node(const));
+                this.children.Insert(0, this.__new_constant_node(_const));
             }
-            if ((this.children.Count() > 1 && this.children[0].__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (this.children[0].__is_constant(0))))
             {
                 this.children.RemoveAt(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             else
             {
-                if (this.children.Count() == 0)
+                if ((this.children.Count()) == (0))
                 {
                     this.copy(this.__new_constant_node(0));
                 }
@@ -2953,14 +3055,15 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public dynamic expand(bool restrictedScope = false)
+        public bool expand(bool restrictedScope = false)
         {
-            if ((restrictedScope && !((new List<dynamic>() { NodeType.SUM, NodeType.PRODUCT, NodeType.POWER }).Contains(this.type))))
+            List<NodeType> types = new() { NodeType.SUM, NodeType.PRODUCT, NodeType.POWER };
+            if (((restrictedScope) && (!((types).Contains(this.type)))))
             {
                 return false;
             }
             var changed = false;
-            if ((restrictedScope && this.type == NodeType.POWER))
+            if (((restrictedScope) && ((this.type) == (NodeType.POWER))))
             {
                 changed = this.children[0].expand(restrictedScope);
             }
@@ -2977,7 +3080,7 @@ namespace Gamba.Prototyping.Transpiled
             if (changed)
             {
                 this.__inspect_constants();
-                if (this.type == NodeType.SUM)
+                if ((this.type) == (NodeType.SUM))
                 {
                     this.__flatten_binary_generic();
                 }
@@ -2986,7 +3089,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 changed = true;
             }
-            if ((changed && this.type == NodeType.SUM))
+            if (((changed) && ((this.type) == (NodeType.SUM))))
             {
                 this.__merge_similar_nodes_sum();
             }
@@ -2995,11 +3098,11 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_expand()
         {
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 return this.__check_expand_product();
             }
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 return this.__check_expand_power();
             }
@@ -3008,9 +3111,9 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_expand_product()
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(this.children.Count() > 0);
-            if (this.children.Count() == 1)
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((this.children.Count()) > (0));
+            if ((this.children.Count()) == (1))
             {
                 return false;
             }
@@ -3024,14 +3127,14 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __has_sum_child()
         {
-            return this.__get_first_sum_index() != null;
+            return (this.__get_first_sum_index()) != (null);
         }
 
-        public void __get_first_sum_index()
+        public NullableI32 __get_first_sum_index()
         {
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
-                if (this.children[i].type == NodeType.SUM)
+                if ((this.children[i].type) == (NodeType.SUM))
                 {
                     return i;
                 }
@@ -3041,19 +3144,20 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __expand_product()
         {
+            Node node = null;
             while (true)
             {
                 var sumIdx = this.__get_first_sum_index();
-                if (sumIdx == null)
+                if ((sumIdx) == (null))
                 {
                     break;
                 }
-                var node = this.children[sumIdx].get_copy();
-                Assert.True(node.type == NodeType.SUM);
+                node = this.children[sumIdx].get_copy();
+                Assert.True((node.type) == (NodeType.SUM));
                 var repeat = false;
-                foreach (var i in range(this.children.Count()))
+                foreach (var i in Range.Get(this.children.Count()))
                 {
-                    if (i == sumIdx)
+                    if ((i) == (sumIdx))
                     {
                         continue;
                     }
@@ -3062,12 +3166,12 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         break;
                     }
-                    if (node.type != NodeType.SUM)
+                    if ((node.type) != (NodeType.SUM))
                     {
                         this.children[sumIdx] = node;
-                        foreach (var j in range(i, -(1), -(1)))
+                        foreach (var j in Range.Get(i, -(1), -(1)))
                         {
-                            if (j == sumIdx)
+                            if ((j) == (sumIdx))
                             {
                                 continue;
                             }
@@ -3082,7 +3186,7 @@ namespace Gamba.Prototyping.Transpiled
                     break;
                 }
             }
-            if (node.children.Count() == 1)
+            if ((node.children.Count()) == (1))
             {
                 this.copy(node.children[0]);
             }
@@ -3092,32 +3196,32 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void __multiply_sum(dynamic other)
+        public void __multiply_sum(Node other)
         {
-            Assert.True(this.type == NodeType.SUM);
-            if (other.type == NodeType.SUM)
+            Assert.True((this.type) == (NodeType.SUM));
+            if ((other.type) == (NodeType.SUM))
             {
                 this.__multiply_sum_with_sum(other, true);
                 return;
             }
-            var constant = 0;
-            foreach (var i in range(this.children.Count() - 1, -(1), -(1)))
+            long constant = 0;
+            foreach (var i in Range.Get(((this.children.Count()) - (1)), -(1), -(1)))
             {
                 var child = this.children[i];
                 child.__multiply_with_node_no_sum(other);
-                if (child.type == NodeType.CONSTANT)
+                if ((child.type) == (NodeType.CONSTANT))
                 {
-                    constant = this.__get_reduced_constant(constant + child.constant);
-                    if (i > 0)
+                    constant = this.__get_reduced_constant(((constant) + (child.constant)));
+                    if ((i) > (0))
                     {
                         this.children.RemoveAt(i);
                     }
                     continue;
                 }
             }
-            if (this.children[0].type == NodeType.CONSTANT)
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
-                if (constant == 0)
+                if ((constant) == (0))
                 {
                     this.children.RemoveAt(0);
                 }
@@ -3128,38 +3232,38 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                if (constant != 0)
+                if ((constant) != (0))
                 {
                     this.children.Insert(0, this.__new_constant_node(constant));
                 }
             }
             this.__merge_similar_nodes_sum();
-            if ((this.type == NodeType.SUM && this.children.Count() == 0))
+            if ((((this.type) == (NodeType.SUM)) && ((this.children.Count()) == (0))))
             {
                 this.copy(this.__new_constant_node(0));
             }
         }
 
-        public void __multiply_sum_with_sum(dynamic other, bool keepSum = false)
+        public void __multiply_sum_with_sum(Node other, bool keepSum = false)
         {
-            Assert.True(this.type == NodeType.SUM);
-            Assert.True(other.type == NodeType.SUM);
-            var children = list(this.children);
-            this.children = new List<dynamic>() { };
+            Assert.True((this.type) == (NodeType.SUM));
+            Assert.True((other.type) == (NodeType.SUM));
+            List<Node> children = new(this.children);
+            this.children = new() { };
             foreach (var child in children)
             {
                 foreach (var ochild in other.children)
                 {
                     var prod = child.__get_product_with_node(ochild);
-                    if (prod.type == NodeType.CONSTANT)
+                    if ((prod.type) == (NodeType.CONSTANT))
                     {
                         if (prod.__is_constant(0))
                         {
                             continue;
                         }
-                        if ((this.children.Count() > 0 && this.children[0].type == NodeType.CONSTANT))
+                        if ((((this.children.Count()) > (0)) && ((this.children[0].type) == (NodeType.CONSTANT))))
                         {
-                            this.children[0].__set_and_reduce_constant(this.children[0].constant + prod.constant);
+                            this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (prod.constant)));
                             continue;
                         }
                         this.children.Insert(0, prod);
@@ -3169,7 +3273,7 @@ namespace Gamba.Prototyping.Transpiled
                 }
             }
             this.__merge_similar_nodes_sum();
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 if (!(keepSum))
                 {
@@ -3178,78 +3282,78 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                if (this.children.Count() == 0)
+                if ((this.children.Count()) == (0))
                 {
                     this.copy(this.__new_constant_node(0));
                 }
             }
         }
 
-        public dynamic __get_product_with_node(dynamic other)
+        public Node __get_product_with_node(Node other)
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 return this.__get_product_of_constant_and_node(other);
             }
-            if (other.type == NodeType.CONSTANT)
+            if ((other.type) == (NodeType.CONSTANT))
             {
-                return other.__get_product_of_constant_and_node(self);
+                return other.__get_product_of_constant_and_node(this);
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                if (other.type == NodeType.PRODUCT)
+                if ((other.type) == (NodeType.PRODUCT))
                 {
                     return this.__get_product_of_products(other);
                 }
-                if (other.type == NodeType.POWER)
+                if ((other.type) == (NodeType.POWER))
                 {
                     return this.__get_product_of_product_and_power(other);
                 }
                 return this.__get_product_of_product_and_other(other);
             }
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
-                if (other.type == NodeType.POWER)
+                if ((other.type) == (NodeType.POWER))
                 {
                     return this.__get_product_of_powers(other);
                 }
-                if (other.type == NodeType.PRODUCT)
+                if ((other.type) == (NodeType.PRODUCT))
                 {
-                    return other.__get_product_of_product_and_power(self);
+                    return other.__get_product_of_product_and_power(this);
                 }
                 return this.__get_product_of_power_and_other(other);
             }
-            if (other.type == NodeType.PRODUCT)
+            if ((other.type) == (NodeType.PRODUCT))
             {
-                return other.__get_product_of_product_and_other(self);
+                return other.__get_product_of_product_and_other(this);
             }
-            if (other.type == NodeType.POWER)
+            if ((other.type) == (NodeType.POWER))
             {
-                return other.__get_product_of_power_and_other(self);
+                return other.__get_product_of_power_and_other(this);
             }
             return this.__get_product_generic(other);
         }
 
-        public Node __get_product_of_constant_and_node(dynamic other)
+        public Node __get_product_of_constant_and_node(Node other)
         {
-            Assert.True(this.type == NodeType.CONSTANT);
+            Assert.True((this.type) == (NodeType.CONSTANT));
             var node = other.get_copy();
             node.__multiply(this.constant);
             return node;
         }
 
-        public Node __get_product_of_products(dynamic other)
+        public Node __get_product_of_products(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(other.type == NodeType.PRODUCT);
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((other.type) == (NodeType.PRODUCT));
             var node = this.get_copy();
             foreach (var ochild in other.children)
             {
-                if (ochild.type == NodeType.CONSTANT)
+                if ((ochild.type) == (NodeType.CONSTANT))
                 {
-                    if (node.children[0].type == NodeType.CONSTANT)
+                    if ((node.children[0].type) == (NodeType.CONSTANT))
                     {
-                        node.children[0].__set_and_reduce_constant(node.children[0].constant * ochild.constant);
+                        node.children[0].__set_and_reduce_constant(((node.children[0].constant) * (ochild.constant)));
                         if (node.children[0].__is_constant(0))
                         {
                             return node.children[0];
@@ -3261,18 +3365,19 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     continue;
                 }
-                if (ochild.type == NodeType.POWER)
+                if ((ochild.type) == (NodeType.POWER))
                 {
                     node.__merge_power_into_product(ochild);
                     continue;
                 }
                 var merged = false;
-                foreach (var i in range(node.children.Count()))
+                foreach (var i in Range.Get(node.children.Count()))
                 {
                     var child = node.children[i];
                     if (child.Equals(ochild))
                     {
-                        node.children[i] = this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { child, this.__new_constant_node(2) });
+                        List<Node> power_children = new() { child, this.__new_constant_node(2) };
+                        node.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
                         merged = true;
                         break;
                     }
@@ -3287,26 +3392,26 @@ namespace Gamba.Prototyping.Transpiled
             {
                 node.children.RemoveAt(0);
             }
-            if (node.children.Count() == 1)
+            if ((node.children.Count()) == (1))
             {
                 return node.children[0];
             }
-            if (node.children.Count() == 0)
+            if ((node.children.Count()) == (0))
             {
                 return this.__new_constant_node(1);
             }
             return node;
         }
 
-        public void __merge_power_into_product(dynamic other)
+        public void __merge_power_into_product(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(other.type == NodeType.POWER);
-            var base = other.children[0];
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((other.type) == (NodeType.POWER));
+            var _base = other.children[0];
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
-                if (child.Equals(base))
+                if (child.Equals(_base))
                 {
                     this.children[i] = other.get_copy();
                     this.children[i].children[1].__add_constant(1);
@@ -3316,7 +3421,7 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     return;
                 }
-                if ((child.type == NodeType.POWER && child.children[0].Equals(base)))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(_base))))
                 {
                     child.children[1].__add(other.children[1]);
                     if (child.children[1].__is_constant(0))
@@ -3329,10 +3434,10 @@ namespace Gamba.Prototyping.Transpiled
             this.children.Add(other.get_copy());
         }
 
-        public dynamic __get_product_of_powers(dynamic other)
+        public Node __get_product_of_powers(Node other)
         {
-            Assert.True(this.type == NodeType.POWER);
-            Assert.True(other.type == NodeType.POWER);
+            Assert.True((this.type) == (NodeType.POWER));
+            Assert.True((other.type) == (NodeType.POWER));
             if (this.children[0].Equals(other.children[0]))
             {
                 var node = this.get_copy();
@@ -3347,46 +3452,49 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return node;
             }
-            return this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.get_copy(), other.get_copy() });
+            List<Node> prod_children = new() { this.get_copy(), other.get_copy() };
+            return this.__new_node_with_children(NodeType.PRODUCT, prod_children);
         }
 
-        public Node __get_product_of_product_and_power(dynamic other)
+        public Node __get_product_of_product_and_power(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(other.type == NodeType.POWER);
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((other.type) == (NodeType.POWER));
             var node = this.get_copy();
             node.__merge_power_into_product(other);
-            if (node.children.Count() == 1)
+            if ((node.children.Count()) == (1))
             {
                 return node.children[0];
             }
-            if (node.children.Count() == 0)
+            if ((node.children.Count()) == (0))
             {
                 return this.__new_constant_node(1);
             }
             return node;
         }
 
-        public Node __get_product_of_product_and_other(dynamic other)
+        public Node __get_product_of_product_and_other(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(other.type)));
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
+            Assert.True(!((types).Contains(other.type)));
             var node = this.get_copy();
-            foreach (var i in range(node.children.Count()))
+            foreach (var i in Range.Get(node.children.Count()))
             {
                 var child = node.children[i];
                 if (child.Equals(other))
                 {
-                    node.children[i] = this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { child.get_copy(), this.__new_constant_node(2) });
+                    List<Node> power_children = new() { child.get_copy(), this.__new_constant_node(2) };
+                    node.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
                     return node;
                 }
-                if ((child.type == NodeType.POWER && child.children[0].Equals(other)))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(other))))
                 {
                     child.children[1].__add_constant(1);
                     if (child.children[1].__is_constant(0))
                     {
                         node.children.RemoveAt(i);
-                        if (node.children.Count() == 1)
+                        if ((node.children.Count()) == (1))
                         {
                             node = this.children[0];
                         }
@@ -3398,10 +3506,11 @@ namespace Gamba.Prototyping.Transpiled
             return node;
         }
 
-        public dynamic __get_product_of_power_and_other(dynamic other)
+        public Node __get_product_of_power_and_other(Node other)
         {
-            Assert.True(this.type == NodeType.POWER);
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(other.type)));
+            Assert.True((this.type) == (NodeType.POWER));
+            List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
+            Assert.True(!((types).Contains(other.type)));
             if (this.children[0].Equals(other))
             {
                 var node = this.get_copy();
@@ -3412,42 +3521,46 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return node;
             }
-            return this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.get_copy(), other.get_copy() });
+            List<Node> prod_children = new() { this.get_copy(), other.get_copy() };
+            return this.__new_node_with_children(NodeType.PRODUCT, prod_children);
         }
 
-        public dynamic __get_product_generic(dynamic other)
+        public Node __get_product_generic(Node other)
         {
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(this.type)));
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(other.type)));
+            List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
+            Assert.True(!((types).Contains(this.type)));
+            Assert.True(!((types).Contains(other.type)));
             if (this.Equals(other))
             {
-                return this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { this.get_copy(), this.__new_constant_node(2) });
+                List<Node> power_children = new() { this.get_copy(), this.__new_constant_node(2) };
+                return this.__new_node_with_children(NodeType.POWER, power_children);
             }
-            return this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.get_copy(), other.get_copy() });
+            List<Node> prod_children = new() { this.get_copy(), other.get_copy() };
+            return this.__new_node_with_children(NodeType.PRODUCT, prod_children);
         }
 
-        public void __multiply_with_node_no_sum(dynamic other)
+        public void __multiply_with_node_no_sum(Node other)
         {
-            Assert.True(other.type != NodeType.SUM);
-            if (this.type == NodeType.CONSTANT)
+            Assert.True((other.type) != (NodeType.SUM));
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 this.copy(this.__get_product_of_constant_and_node(other));
                 return;
             }
-            if (other.type == NodeType.CONSTANT)
+            if ((other.type) == (NodeType.CONSTANT))
             {
                 this.__multiply(other.constant);
                 return;
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                if (other.type == NodeType.PRODUCT)
+                if ((other.type) == (NodeType.PRODUCT))
                 {
                     this.__multiply_product_with_product(other);
                 }
                 else
                 {
-                    if (other.type == NodeType.POWER)
+                    if ((other.type) == (NodeType.POWER))
                     {
                         this.__multiply_product_with_power(other);
                     }
@@ -3458,17 +3571,17 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return;
             }
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
-                if (other.type == NodeType.POWER)
+                if ((other.type) == (NodeType.POWER))
                 {
                     this.__multiply_power_with_power(other);
                 }
                 else
                 {
-                    if (other.type == NodeType.PRODUCT)
+                    if ((other.type) == (NodeType.PRODUCT))
                     {
-                        this.copy(other.__get_product_of_product_and_power(self));
+                        this.copy(other.__get_product_of_product_and_power(this));
                     }
                     else
                     {
@@ -3477,15 +3590,15 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return;
             }
-            if (other.type == NodeType.PRODUCT)
+            if ((other.type) == (NodeType.PRODUCT))
             {
-                this.copy(other.__get_product_of_product_and_other(self));
+                this.copy(other.__get_product_of_product_and_other(this));
             }
             else
             {
-                if (other.type == NodeType.POWER)
+                if ((other.type) == (NodeType.POWER))
                 {
-                    this.copy(other.__get_product_of_power_and_other(self));
+                    this.copy(other.__get_product_of_power_and_other(this));
                 }
                 else
                 {
@@ -3494,17 +3607,17 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void __multiply_product_with_product(dynamic other)
+        public void __multiply_product_with_product(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(other.type == NodeType.PRODUCT);
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((other.type) == (NodeType.PRODUCT));
             foreach (var ochild in other.children)
             {
-                if (ochild.type == NodeType.CONSTANT)
+                if ((ochild.type) == (NodeType.CONSTANT))
                 {
-                    if (this.children[0].type == NodeType.CONSTANT)
+                    if ((this.children[0].type) == (NodeType.CONSTANT))
                     {
-                        this.children[0].__set_and_reduce_constant(this.children[0].constant * ochild.constant);
+                        this.children[0].__set_and_reduce_constant(((this.children[0].constant) * (ochild.constant)));
                         if (this.children[0].__is_constant(0))
                         {
                             this.copy(this.children[0]);
@@ -3517,18 +3630,19 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     continue;
                 }
-                if (ochild.type == NodeType.POWER)
+                if ((ochild.type) == (NodeType.POWER))
                 {
                     this.__merge_power_into_product(ochild);
                     continue;
                 }
                 var merged = false;
-                foreach (var i in range(this.children.Count()))
+                foreach (var i in Range.Get(this.children.Count()))
                 {
                     var child = this.children[i];
                     if (child.Equals(ochild))
                     {
-                        this.children[i] = this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { child, this.__new_constant_node(2) });
+                        List<Node> power_children = new() { child, this.__new_constant_node(2) };
+                        this.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
                         merged = true;
                         break;
                     }
@@ -3539,23 +3653,23 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 this.children.Add(ochild.get_copy());
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             else
             {
-                if (this.children.Count() == 0)
+                if ((this.children.Count()) == (0))
                 {
                     this.copy(this.__new_constant_node(1));
                 }
             }
         }
 
-        public void __multiply_power_with_power(dynamic other)
+        public void __multiply_power_with_power(Node other)
         {
-            Assert.True(this.type == NodeType.POWER);
-            Assert.True(other.type == NodeType.POWER);
+            Assert.True((this.type) == (NodeType.POWER));
+            Assert.True((other.type) == (NodeType.POWER));
             if (this.children[0].Equals(other.children[0]))
             {
                 this.children[1].__add(other.children[1]);
@@ -3573,47 +3687,50 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                this.copy(this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.__get_shallow_copy(), other.get_copy() }));
+                List<Node> prod_children = new() { this.__get_shallow_copy(), other.get_copy() };
+                this.copy(this.__new_node_with_children(NodeType.PRODUCT, prod_children));
             }
         }
 
-        public void __multiply_product_with_power(dynamic other)
+        public void __multiply_product_with_power(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(other.type == NodeType.POWER);
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            Assert.True((other.type) == (NodeType.POWER));
             this.__merge_power_into_product(other);
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             else
             {
-                if (this.children.Count() == 0)
+                if ((this.children.Count()) == (0))
                 {
-                    return this.copy(this.__new_constant_node(1));
+                    this.copy(this.__new_constant_node(1));
                 }
             }
         }
 
-        public void __multiply_product_with_other(dynamic other)
+        public void __multiply_product_with_other(Node other)
         {
-            Assert.True(this.type == NodeType.PRODUCT);
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(other.type)));
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.PRODUCT));
+            List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
+            Assert.True(!((types).Contains(other.type)));
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
                 if (child.Equals(other))
                 {
-                    this.children[i] = this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { child.__get_shallow_copy(), this.__new_constant_node(2) });
+                    List<Node> power_children = new() { child.__get_shallow_copy(), this.__new_constant_node(2) };
+                    this.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
                     return;
                 }
-                if ((child.type == NodeType.POWER && child.children[0].Equals(other)))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(other))))
                 {
                     child.children[1].__add_constant(1);
                     if (child.children[1].__is_constant(0))
                     {
                         this.children.RemoveAt(i);
-                        if (this.children.Count() == 1)
+                        if ((this.children.Count()) == (1))
                         {
                             this.copy(this.children[0]);
                         }
@@ -3624,10 +3741,11 @@ namespace Gamba.Prototyping.Transpiled
             this.children.Add(other.get_copy());
         }
 
-        public void __multiply_power_with_other(dynamic other)
+        public void __multiply_power_with_other(Node other)
         {
-            Assert.True(this.type == NodeType.POWER);
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(other.type)));
+            Assert.True((this.type) == (NodeType.POWER));
+            List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
+            Assert.True(!((types).Contains(other.type)));
             if (this.children[0].Equals(other))
             {
                 this.children[1].__add_constant(1);
@@ -3637,37 +3755,41 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return;
             }
-            this.copy(this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.__get_shallow_copy(), other.get_copy() }));
+            List<Node> prod_children = new() { this.__get_shallow_copy(), other.get_copy() };
+            this.copy(this.__new_node_with_children(NodeType.PRODUCT, prod_children));
         }
 
-        public void __multiply_generic(dynamic other)
+        public void __multiply_generic(Node other)
         {
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(this.type)));
-            Assert.True(!((new List<dynamic>() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER }).Contains(other.type)));
+            List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
+            Assert.True(!((types).Contains(this.type)));
+            Assert.True(!((types).Contains(other.type)));
             if (this.Equals(other))
             {
-                this.copy(this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { this.__get_shallow_copy(), this.__new_constant_node(2) }));
+                List<Node> power_children = new() { this.__get_shallow_copy(), this.__new_constant_node(2) };
+                this.copy(this.__new_node_with_children(NodeType.POWER, power_children));
             }
             else
             {
-                this.copy(this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.__get_shallow_copy(), other.get_copy() }));
+                List<Node> prod_children = new() { this.__get_shallow_copy(), other.get_copy() };
+                this.copy(this.__new_node_with_children(NodeType.PRODUCT, prod_children));
             }
         }
 
         public bool __check_expand_power()
         {
-            Assert.True(this.type == NodeType.POWER);
-            if (this.children[0].type != NodeType.SUM)
+            Assert.True((this.type) == (NodeType.POWER));
+            if ((this.children[0].type) != (NodeType.SUM))
             {
                 return false;
             }
             var expNode = this.children[1];
-            if (expNode.type != NodeType.CONSTANT)
+            if ((expNode.type) != (NodeType.CONSTANT))
             {
                 return false;
             }
-            var exp = expNode.constant % this.__modulus;
-            if (exp > MAX_EXPONENT_TO_EXPAND)
+            var exp = ((expNode.constant) % (this.__modulus));
+            if ((exp) > (MAX_EXPONENT_TO_EXPAND))
             {
                 return false;
             }
@@ -3675,20 +3797,21 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public void __expand_power(dynamic exp)
+        public void __expand_power(long _exp)
         {
-            var base = this.children[0];
-            var node = base.get_copy();
-            Assert.True(node.type == NodeType.SUM);
-            foreach (var i in range(1, exp))
+            var exp = Convert.ToInt32(_exp);
+            var _base = this.children[0];
+            var node = _base.get_copy();
+            Assert.True((node.type) == (NodeType.SUM));
+            foreach (var i in Range.Get(1, exp))
             {
-                node.__multiply_sum_with_sum(base, true);
+                node.__multiply_sum_with_sum(_base, true);
                 if (node.__is_constant(0))
                 {
                     break;
                 }
             }
-            if (node.children.Count() == 1)
+            if ((node.children.Count()) == (1))
             {
                 this.copy(node.children[0]);
             }
@@ -3698,7 +3821,7 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public dynamic factorize_sums(bool restrictedScope = false)
+        public bool factorize_sums(bool restrictedScope = false)
         {
             if (restrictedScope)
             {
@@ -3721,7 +3844,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_factorize_sum()
         {
-            if ((this.type != NodeType.SUM || this.children.Count() <= 1))
+            if ((((this.type) != (NodeType.SUM)) || ((this.children.Count()) <= (1))))
             {
                 return false;
             }
@@ -3732,7 +3855,7 @@ namespace Gamba.Prototyping.Transpiled
             var (nodes, nodesToTerms, termsToNodes) = this.__collect_all_factors_of_sum();
             var nodesTriviality = this.__determine_nodes_triviality(nodes);
             var nodesOrder = this.__determine_nodes_order(nodes);
-            var partition = Batch(new List<dynamic>() { }, new List<dynamic>() { }, set(range(this.children.Count())), nodesToTerms, termsToNodes, nodesTriviality, nodesOrder);
+            var partition = Batch(new() { }, new() { }, set(Range.Get(this.children.Count())), nodesToTerms, termsToNodes, nodesTriviality, nodesOrder);
             if (partition.is_trivial())
             {
                 return false;
@@ -3741,24 +3864,24 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public dynamic __collect_all_factors_of_sum()
+        public (List<Node>, List<object>, List<HashSet<IndexWithMultitude>>) __collect_all_factors_of_sum()
         {
-            var nodes = new List<dynamic>() { };
-            var nodesToTerms = new List<dynamic>() { };
-            var termsToNodes = new List<dynamic>() { };
-            foreach (var i in range(this.children.Count()))
+            var nodes = new() { };
+            var nodesToTerms = new() { };
+            var termsToNodes = new() { };
+            foreach (var i in Range.Get(this.children.Count()))
             {
-                termsToNodes.Add(set(new List<dynamic>() { }));
+                termsToNodes.Add(set(new() { }));
                 var term = this.children[i];
                 term.__collect_factors(i, 1, nodes, nodesToTerms, termsToNodes);
             }
-            Assert.True(nodes.Count() == nodesToTerms.Count());
+            Assert.True((nodes.Count()) == (nodesToTerms.Count()));
             return (nodes, nodesToTerms, termsToNodes);
         }
 
-        public void __collect_factors(dynamic i, dynamic multitude, dynamic nodes, dynamic nodesToTerms, dynamic termsToNodes)
+        public void __collect_factors(int i, long multitude, List<Node> nodes, List<object> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 foreach (var factor in this.children)
                 {
@@ -3767,13 +3890,13 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                if (this.type == NodeType.POWER)
+                if ((this.type) == (NodeType.POWER))
                 {
                     this.__collect_factors_of_power(i, multitude, nodes, nodesToTerms, termsToNodes);
                 }
                 else
                 {
-                    if (this.type != NodeType.CONSTANT)
+                    if ((this.type) != (NodeType.CONSTANT))
                     {
                         this.__check_store_factor(i, multitude, nodes, nodesToTerms, termsToNodes);
                     }
@@ -3781,25 +3904,25 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void __collect_factors_of_power(dynamic i, dynamic multitude, dynamic nodes, dynamic nodesToTerms, dynamic termsToNodes)
+        public void __collect_factors_of_power(int i, long multitude, List<Node> nodes, List<object> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
-            Assert.True(this.type == NodeType.POWER);
-            var base = this.children[0];
+            Assert.True((this.type) == (NodeType.POWER));
+            var _base = this.children[0];
             var exp = this.children[1];
-            if (exp.type == NodeType.CONSTANT)
+            if ((exp.type) == (NodeType.CONSTANT))
             {
-                base.__collect_factors(i, exp.constant * multitude % this.__modulus, nodes, nodesToTerms, termsToNodes);
+                _base.__collect_factors(i, ((((exp.constant) * (multitude))) % (this.__modulus)), nodes, nodesToTerms, termsToNodes);
                 return;
             }
-            if (exp.type == NodeType.SUM)
+            if ((exp.type) == (NodeType.SUM))
             {
                 var first = exp.children[0];
-                if (first.type == NodeType.CONSTANT)
+                if ((first.type) == (NodeType.CONSTANT))
                 {
-                    base.__collect_factors(i, first.constant * multitude % this.__modulus, nodes, nodesToTerms, termsToNodes);
+                    _base.__collect_factors(i, ((((first.constant) * (multitude))) % (this.__modulus)), nodes, nodesToTerms, termsToNodes);
                     var node = this.get_copy();
                     node.children[1].children.RemoveAt(0);
-                    if (node.children[1].children.Count() == 1)
+                    if ((node.children[1].children.Count()) == (1))
                     {
                         node.children[1] = node.children[1].children[0];
                     }
@@ -3810,20 +3933,20 @@ namespace Gamba.Prototyping.Transpiled
             this.__check_store_factor(i, multitude, nodes, nodesToTerms, termsToNodes);
         }
 
-        public void __check_store_factor(dynamic i, dynamic multitude, dynamic nodes, dynamic nodesToTerms, dynamic termsToNodes)
+        public void __check_store_factor(int i, long multitude, List<Node> nodes, List<object> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
             var idx = this.__get_index_in_list(nodes);
-            if (idx == null)
+            if ((idx) == (null))
             {
                 nodes.Add(this.__get_shallow_copy());
-                nodesToTerms.Add(new List<dynamic>() { nodes.Count() - 1, set(new List<dynamic>() { IndexWithMultitude(i, multitude) }) });
-                termsToNodes[i].add(IndexWithMultitude(nodes.Count() - 1, multitude));
+                nodesToTerms.Add(new() { ((nodes.Count()) - (1)), set(new() { IndexWithMultitude(i, multitude) }) });
+                termsToNodes[i].add(IndexWithMultitude(((nodes.Count()) - (1)), multitude));
                 return;
             }
             var ntt = nodesToTerms[idx][1];
-            var res = ntt.Where(p => p.idx == i).Select(p => p);
-            Assert.True(res.Count() <= 1);
-            if (res.Count() == 1)
+            var res = ntt.Where(p => (p.idx) == (i)).Select(p => p);
+            Assert.True((res.Count()) <= (1));
+            if ((res.Count()) == (1))
             {
                 res[0].multitude += multitude;
             }
@@ -3832,10 +3955,10 @@ namespace Gamba.Prototyping.Transpiled
                 ntt.add(IndexWithMultitude(i, multitude));
             }
             var ttn = termsToNodes[i];
-            var res2 = ttn.Where(p => p.idx == idx).Select(p => p);
-            Assert.True(res2.Count() <= 1);
-            Assert.True(res2.Count() == 1 == res.Count() == 1);
-            if (res2.Count() == 1)
+            var res2 = ttn.Where(p => (p.idx) == (idx)).Select(p => p);
+            Assert.True((res2.Count()) <= (1));
+            Assert.True(((res2.Count()) == (1)) == ((res.Count()) == (1)));
+            if ((res2.Count()) == (1))
             {
                 res2[0].multitude += multitude;
             }
@@ -3845,26 +3968,27 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public dynamic __determine_nodes_triviality(dynamic nodes)
+        public List<bool> __determine_nodes_triviality(List<Node> nodes)
         {
             return nodes.Where(n => ).Select(x => n.__is_trivial_in_factorization());
         }
 
-        public dynamic __determine_nodes_order(dynamic nodes)
+        public List<int> __determine_nodes_order(List<Node> nodes)
         {
-            var enumNodes = list(enumerate(nodes));
-            enumNodes.sort();
+            var enumNodes = new(enumerate(nodes));
+            enumNodes.Sort();
             return enumNodes.Where(p => ).Select(x => p[0]);
         }
 
-        public dynamic __is_trivial_in_factorization()
+        public bool __is_trivial_in_factorization()
         {
             return !(this.__is_bitwise_binop());
         }
 
-        public Node __node_from_batch(dynamic batch, dynamic nodes, dynamic termsToNodes)
+        public Node __node_from_batch(Batch batch, List<Node> nodes, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
             var node = this.__new_node(NodeType.SUM);
+            Node prod = null;
             foreach (var c in batch.children)
             {
                 node.children.Add(this.__node_from_batch(c, nodes, termsToNodes));
@@ -3875,19 +3999,19 @@ namespace Gamba.Prototyping.Transpiled
                 var nodeIndices = termsToNodes[a];
                 var term = this.children[a];
                 var constant = term.__get_const_factor_respecting_powers();
-                if (nodeIndices.Count() == 0)
+                if ((nodeIndices.Count()) == (0))
                 {
                     node.__add_constant(constant);
                     continue;
                 }
-                if ((nodeIndices.Count() == 1 && constant == 1))
+                if ((((nodeIndices.Count()) == (1)) && ((constant) == (1))))
                 {
-                    var p = nodeIndices.pop();
+                    var p = nodeIndices.Pop();
                     node.children.Add(this.__create_node_for_factor(nodes, p));
                     continue;
                 }
-                var prod = this.__new_node(NodeType.PRODUCT);
-                if (constant != 1)
+                prod = this.__new_node(NodeType.PRODUCT);
+                if ((constant) != (1))
                 {
                     prod.children.Add(this.__new_constant_node(constant));
                 }
@@ -3898,11 +4022,11 @@ namespace Gamba.Prototyping.Transpiled
                 prod.__check_resolve_product_of_powers();
                 node.children.Add(prod);
             }
-            if (node.children.Count() == 1)
+            if ((node.children.Count()) == (1))
             {
                 node.copy(node.children[0]);
             }
-            if (batch.factorIndices.Count() == 0)
+            if ((batch.factorIndices.Count()) == (0))
             {
                 return node;
             }
@@ -3911,7 +4035,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 prod.children.Add(this.__create_node_for_factor(nodes, p));
             }
-            if ((node.children.Count() == 1 && node.children[0].type == NodeType.CONSTANT))
+            if ((((node.children.Count()) == (1)) && ((node.children[0].type) == (NodeType.CONSTANT))))
             {
                 prod.children.Add(node);
             }
@@ -3923,91 +4047,92 @@ namespace Gamba.Prototyping.Transpiled
             return prod;
         }
 
-        public void __reduce_node_set(dynamic indicesWithMultitudes, dynamic l1, dynamic l2)
+        public void __reduce_node_set(HashSet<IndexWithMultitude> indicesWithMultitudes, int l1, int l2)
         {
-            foreach (var p in l1 + l2)
+            foreach (var p in ((l1) + (l2)))
             {
-                var m = indicesWithMultitudes.Where(q => q.idx == p.idx).Select(q => q);
-                Assert.True(m.Count() == 1);
-                Assert.True(m[0].multitude >= p.multitude);
+                var m = indicesWithMultitudes.Where(q => (q.idx) == (p.idx)).Select(q => q);
+                Assert.True((m.Count()) == (1));
+                Assert.True((m[0].multitude) >= (p.multitude));
                 m[0].multitude -= p.multitude;
-                if (m[0].multitude == 0)
+                if ((m[0].multitude) == (0))
                 {
-                    indicesWithMultitudes.remove(m[0]);
+                    indicesWithMultitudes.Remove(m[0]);
                 }
             }
         }
 
-        public dynamic __get_const_factor_respecting_powers()
+        public long __get_const_factor_respecting_powers()
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 return this.constant;
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                var f = 1;
+                long f = 1;
                 foreach (var child in this.children)
                 {
-                    f = this.__get_reduced_constant(f * child.__get_const_factor_respecting_powers());
+                    f = this.__get_reduced_constant(((f) * (child.__get_const_factor_respecting_powers())));
                 }
                 return f;
             }
-            if (this.type != NodeType.POWER)
+            if ((this.type) != (NodeType.POWER))
             {
                 return 1;
             }
-            var base = this.children[0];
-            if (base.type != NodeType.PRODUCT)
+            var _base = this.children[0];
+            if ((_base.type) != (NodeType.PRODUCT))
             {
                 return 1;
             }
-            if (base.children[0].type != NodeType.CONSTANT)
+            if ((_base.children[0].type) != (NodeType.CONSTANT))
             {
                 return 1;
             }
-            var const = base.children[0].constant;
+            var _const = _base.children[0].constant;
             var exp = this.children[1];
-            if (exp.type == NodeType.CONSTANT)
+            if ((exp.type) == (NodeType.CONSTANT))
             {
-                return this.__power(const, exp.constant);
+                return this.__power(_const, exp.constant);
             }
-            if (exp.type != NodeType.SUM)
-            {
-                return 1;
-            }
-            if (exp.children[0].type != NodeType.CONSTANT)
+            if ((exp.type) != (NodeType.SUM))
             {
                 return 1;
             }
-            return this.__power(const, exp.children[0].constant);
+            if ((exp.children[0].type) != (NodeType.CONSTANT))
+            {
+                return 1;
+            }
+            return this.__power(_const, exp.children[0].constant);
         }
 
-        public dynamic __create_node_for_factor(dynamic nodes, dynamic indexWithMultitude)
+        public Node __create_node_for_factor(List<Node> nodes, IndexWithMultitude indexWithMultitude)
         {
             var exp = indexWithMultitude.multitude;
-            Assert.True(exp > 0);
+            Assert.True((exp) > (0));
             var idx = indexWithMultitude.idx;
-            if (exp == 1)
+            if ((exp) == (1))
             {
                 return nodes[idx].get_copy();
             }
-            return this.__new_node_with_children(NodeType.POWER, new List<dynamic>() { nodes[idx].get_copy(), this.__new_constant_node(exp) });
+            List<Node> pow_children = new() { nodes[idx].get_copy(), this.__new_constant_node(exp) };
+            return this.__new_node_with_children(NodeType.POWER, pow_children);
         }
 
-        public dynamic __insert_fixed_in_conj()
+        public bool __insert_fixed_in_conj()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
             var changed = false;
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child1 = this.children[i];
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (i == j)
+                    if ((i) == (j))
                     {
                         continue;
                     }
@@ -4020,7 +4145,7 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public dynamic __check_insert_fixed_true(dynamic node)
+        public bool __check_insert_fixed_true(Node node)
         {
             if (!(this.__is_bitwise_op()))
             {
@@ -4048,19 +4173,19 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public dynamic __insert_fixed_in_disj()
+        public bool __insert_fixed_in_disj()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
             var changed = false;
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child1 = this.children[i];
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (i == j)
+                    if ((i) == (j))
                     {
                         continue;
                     }
@@ -4073,7 +4198,7 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public dynamic __check_insert_fixed_false(dynamic node)
+        public bool __check_insert_fixed_false(Node node)
         {
             if (!(this.__is_bitwise_op()))
             {
@@ -4103,12 +4228,12 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_trivial_xor()
         {
-            if (this.type != NodeType.EXCL_DISJUNCTION)
+            if ((this.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return false;
             }
             var c = this.children[0];
-            if (this.children.Count() == 2)
+            if ((this.children.Count()) == (2))
             {
                 if (c.__is_constant(-(1)))
                 {
@@ -4124,7 +4249,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                Assert.True(this.children.Count() > 2);
+                Assert.True((this.children.Count()) > (2));
                 if (c.__is_constant(0))
                 {
                     this.children.RemoveAt(0);
@@ -4134,30 +4259,31 @@ namespace Gamba.Prototyping.Transpiled
             return false;
         }
 
-        public dynamic __check_xor_same_mult_by_minus_one()
+        public bool __check_xor_same_mult_by_minus_one()
         {
-            if (!(this.type == NodeType.PRODUCT))
+            if (!((this.type) == (NodeType.PRODUCT)))
             {
                 return false;
             }
             var first = this.children[0];
-            if (!(first.type == NodeType.CONSTANT))
+            if (!((first.type) == (NodeType.CONSTANT)))
             {
                 return false;
             }
-            if (first.constant % 2 != 0)
+            if ((((first.constant) % (2))) != (0))
             {
                 return false;
             }
             var changed = false;
-            foreach (var i in range(this.children.Count() - 1, 0, -(1)))
+            foreach (var i in Range.Get(((this.children.Count()) - (1)), 0, -(1)))
             {
                 var child = this.children[i];
-                if (!((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(child.type)))
+                List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION };
+                if (!((types).Contains(child.type)))
                 {
                     continue;
                 }
-                if (child.children.Count() != 2)
+                if ((child.children.Count()) != (2))
                 {
                     continue;
                 }
@@ -4168,13 +4294,13 @@ namespace Gamba.Prototyping.Transpiled
                     continue;
                 }
                 first.constant /= 2;
-                if (child.type == NodeType.CONJUNCTION)
+                if ((child.type) == (NodeType.CONJUNCTION))
                 {
                     first.__set_and_reduce_constant(-(first.constant));
                 }
                 child.type = NodeType.EXCL_DISJUNCTION;
                 changed = true;
-                if (first.constant % 2 != 0)
+                if ((((first.constant) % (2))) != (0))
                 {
                     break;
                 }
@@ -4184,7 +4310,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_conj_zero_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -4198,11 +4324,11 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __has_conj_zero_rule()
         {
-            Assert.True(this.type == NodeType.CONJUNCTION);
-            foreach (var i in range(this.children.Count() - 1))
+            Assert.True((this.type) == (NodeType.CONJUNCTION));
+            foreach (var i in Range.Get(((this.children.Count()) - (1))))
             {
                 var child1 = this.children[i];
-                foreach (var j in range(i + 1, this.children.Count()))
+                foreach (var j in Range.Get(((i) + (1)), this.children.Count()))
                 {
                     var child2 = this.children[j];
                     var neg2 = child2.get_copy();
@@ -4215,14 +4341,15 @@ namespace Gamba.Prototyping.Transpiled
                     double1.__multiply(2);
                     var double2 = child2.get_copy();
                     double2.__multiply(2);
-                    foreach (var k in range(this.children.Count()))
+                    foreach (var k in Range.Get(this.children.Count()))
                     {
-                        if (((new List<dynamic>() { i, j }).Contains(k)))
+                        List<int> nums = new() { i, j };
+                        if (((nums).Contains(k)))
                         {
                             continue;
                         }
                         var child3 = this.children[k];
-                        if ((child3.Equals(double1) || child3.Equals(double2)))
+                        if (((child3.Equals(double1)) || (child3.Equals(double2))))
                         {
                             return true;
                         }
@@ -4234,7 +4361,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_conj_neg_xor_zero_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -4248,26 +4375,26 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __has_conj_neg_xor_zero_rule()
         {
-            Assert.True(this.type == NodeType.CONJUNCTION);
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.CONJUNCTION));
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_neg_xor_same_neg();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
                 var node2 = node.get_copy();
                 node2.__multiply_by_minus_one();
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (i == j)
+                    if ((i) == (j))
                     {
                         continue;
                     }
                     var neg2 = this.children[j].get_copy();
                     neg2.__negate();
-                    if ((neg2.__is_double(node) || neg2.__is_double(node2)))
+                    if (((neg2.__is_double(node)) || (neg2.__is_double(node2))))
                     {
                         return true;
                     }
@@ -4276,13 +4403,13 @@ namespace Gamba.Prototyping.Transpiled
             return false;
         }
 
-        public void __get_opt_arg_neg_xor_same_neg()
+        public Node __get_opt_arg_neg_xor_same_neg()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
@@ -4291,11 +4418,11 @@ namespace Gamba.Prototyping.Transpiled
                 return null;
             }
             var xor = this.children[1];
-            if (xor.type != NodeType.EXCL_DISJUNCTION)
+            if ((xor.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return null;
             }
-            if (xor.children.Count() != 2)
+            if ((xor.children.Count()) != (2))
             {
                 return null;
             }
@@ -4310,7 +4437,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_conj_neg_xor_minus_one_rule()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -4324,29 +4451,29 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __has_disj_neg_xor_minus_one_rule()
         {
-            Assert.True(this.type == NodeType.INCL_DISJUNCTION);
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.INCL_DISJUNCTION));
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child1 = this.children[i];
-                if (child1.type != NodeType.NEGATION)
+                if ((child1.type) != (NodeType.NEGATION))
                 {
                     continue;
                 }
                 var node = child1.children[0].__get_opt_arg_neg_xor_same_neg();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
                 var node2 = node.get_copy();
                 node2.__multiply_by_minus_one();
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (i == j)
+                    if ((i) == (j))
                     {
                         continue;
                     }
                     var child2 = this.children[j];
-                    if ((child2.__is_double(node) || child2.__is_double(node2)))
+                    if (((child2.__is_double(node)) || (child2.__is_double(node2))))
                     {
                         return true;
                     }
@@ -4357,7 +4484,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_conj_negated_xor_zero_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -4371,25 +4498,25 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __has_conj_negated_xor_zero_rule()
         {
-            Assert.True(this.type == NodeType.CONJUNCTION);
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.CONJUNCTION));
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_negated_xor_same_neg();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
                 var node2 = node.get_copy();
                 node2.__multiply_by_minus_one();
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (i == j)
+                    if ((i) == (j))
                     {
                         continue;
                     }
                     var child2 = this.children[j].get_copy();
-                    if ((child2.__is_double(node) || child2.__is_double(node2)))
+                    if (((child2.__is_double(node)) || (child2.__is_double(node2))))
                     {
                         return true;
                     }
@@ -4398,18 +4525,18 @@ namespace Gamba.Prototyping.Transpiled
             return false;
         }
 
-        public void __get_opt_arg_negated_xor_same_neg()
+        public Node __get_opt_arg_negated_xor_same_neg()
         {
-            if (this.type != NodeType.NEGATION)
+            if ((this.type) != (NodeType.NEGATION))
             {
                 return null;
             }
             var xor = this.children[0];
-            if (xor.type != NodeType.EXCL_DISJUNCTION)
+            if ((xor.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return null;
             }
-            if (xor.children.Count() != 2)
+            if ((xor.children.Count()) != (2))
             {
                 return null;
             }
@@ -4422,9 +4549,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_conj_xor_identity_rule()
+        public bool __check_conj_xor_identity_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -4433,7 +4560,7 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
@@ -4442,14 +4569,14 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
                     var child2 = this.children[j];
-                    if ((child2.__is_double(child1.children[0]) || child2.__is_double(child1.children[1])))
+                    if (((child2.__is_double(child1.children[0])) || (child2.__is_double(child1.children[1]))))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -4458,20 +4585,20 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __is_xor_same_neg()
+        public bool __is_xor_same_neg()
         {
-            if (this.type != NodeType.EXCL_DISJUNCTION)
+            if ((this.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return false;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return false;
             }
@@ -4480,16 +4607,16 @@ namespace Gamba.Prototyping.Transpiled
             return neg.Equals(this.children[0]);
         }
 
-        public dynamic __is_double(dynamic node)
+        public bool __is_double(Node node)
         {
             var cpy = node.get_copy();
             cpy.__multiply(2);
             return this.Equals(cpy);
         }
 
-        public dynamic __check_disj_xor_identity_rule()
+        public bool __check_disj_xor_identity_rule()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -4498,24 +4625,24 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_xor_disj_xor_identity();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
                     var child2 = this.children[j];
-                    if ((child2.__is_double(node.children[0]) || child2.__is_double(node.children[1])))
+                    if (((child2.__is_double(node.children[0])) || (child2.__is_double(node.children[1]))))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -4524,20 +4651,20 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_opt_xor_disj_xor_identity()
+        public Node __get_opt_xor_disj_xor_identity()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
@@ -4546,11 +4673,11 @@ namespace Gamba.Prototyping.Transpiled
                 return null;
             }
             var child = this.children[1];
-            if (child.type != NodeType.EXCL_DISJUNCTION)
+            if ((child.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return null;
             }
-            if (child.children.Count() != 2)
+            if ((child.children.Count()) != (2))
             {
                 return null;
             }
@@ -4559,9 +4686,9 @@ namespace Gamba.Prototyping.Transpiled
             return (neg.Equals(child.children[0])) ? child : null;
         }
 
-        public dynamic __check_conj_neg_conj_identity_rule()
+        public bool __check_conj_neg_conj_identity_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -4570,19 +4697,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_neg_conj_double();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -4598,31 +4725,31 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_opt_arg_neg_conj_double()
+        public Node __get_opt_arg_neg_conj_double()
         {
             var node = this.__get_opt_arg_neg_conj_double_1();
-            return (node != null) ? node : this.__get_opt_arg_neg_conj_double_2();
+            return ((node) != (null)) ? node : this.__get_opt_arg_neg_conj_double_2();
         }
 
-        public void __get_opt_arg_neg_conj_double_1()
+        public Node __get_opt_arg_neg_conj_double_1()
         {
-            if (this.type != NodeType.NEGATION)
+            if ((this.type) != (NodeType.NEGATION))
             {
                 return null;
             }
             var child = this.children[0];
-            if (child.type != NodeType.CONJUNCTION)
+            if ((child.type) != (NodeType.CONJUNCTION))
             {
                 return null;
             }
-            if (child.children.Count() != 2)
+            if ((child.children.Count()) != (2))
             {
                 return null;
             }
@@ -4649,13 +4776,13 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __get_opt_arg_neg_conj_double_2()
+        public Node __get_opt_arg_neg_conj_double_2()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
@@ -4685,19 +4812,19 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_disj_disj_identity_rule()
+        public bool __check_disj_disj_identity_rule()
         {
             return this.__check_nested_bitwise_identity_rule(NodeType.INCL_DISJUNCTION);
         }
 
-        public dynamic __check_conj_conj_identity_rule()
+        public bool __check_conj_conj_identity_rule()
         {
             return this.__check_nested_bitwise_identity_rule(NodeType.CONJUNCTION);
         }
 
-        public dynamic __check_nested_bitwise_identity_rule(dynamic t)
+        public bool __check_nested_bitwise_identity_rule(NodeType t)
         {
-            if (this.type != t)
+            if ((this.type) != (t))
             {
                 return false;
             }
@@ -4706,20 +4833,20 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var nodes = child1.__get_candidates_nested_bitwise_identity(t);
-                Assert.True(nodes.Count() <= 2);
-                if (nodes.Count() == 0)
+                Assert.True((nodes.Count()) <= (2));
+                if ((nodes.Count()) == (0))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -4742,65 +4869,65 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_candidates_nested_bitwise_identity(dynamic t)
+        public List<Node> __get_candidates_nested_bitwise_identity(NodeType t)
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
-                return new List<dynamic>() { };
+                return new() { };
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
-                return new List<dynamic>() { };
+                return new() { };
             }
             if (!(this.children[0].__is_constant(-(1))))
             {
-                return new List<dynamic>() { };
+                return new() { };
             }
             var bitw = this.children[1];
-            if (bitw.type != t)
+            if ((bitw.type) != (t))
             {
-                return new List<dynamic>() { };
+                return new() { };
             }
-            if (bitw.children.Count() != 2)
+            if ((bitw.children.Count()) != (2))
             {
-                return new List<dynamic>() { };
+                return new() { };
             }
             var neg = bitw.children[1].get_copy();
             neg.__multiply_by_minus_one();
             if (neg.Equals(bitw.children[0]))
             {
-                return new List<dynamic>() { bitw.children[0], bitw.children[1] };
+                return new() { bitw.children[0], bitw.children[1] };
             }
-            var ot = (t == NodeType.INCL_DISJUNCTION) ? NodeType.CONJUNCTION : NodeType.INCL_DISJUNCTION;
-            if (bitw.children[0].type == ot)
+            var ot = ((t) == (NodeType.INCL_DISJUNCTION)) ? NodeType.CONJUNCTION : NodeType.INCL_DISJUNCTION;
+            if ((bitw.children[0].type) == (ot))
             {
                 if (bitw.children[0].__has_child(neg))
                 {
-                    return new List<dynamic>() { neg };
+                    return new() { neg };
                 }
             }
-            if (bitw.children[1].type == ot)
+            if ((bitw.children[1].type) == (ot))
             {
                 neg = bitw.children[0].get_copy();
                 neg.__multiply_by_minus_one();
                 if (bitw.children[1].__has_child(neg))
                 {
-                    return new List<dynamic>() { neg };
+                    return new() { neg };
                 }
             }
-            return (neg.Equals(bitw.children[0])) ? bitw : new List<dynamic>() { };
+            return (neg.Equals(bitw.children[0])) ? new() { bitw } : new() { };
         }
 
-        public dynamic __check_disj_conj_identity_rule()
+        public bool __check_disj_conj_identity_rule()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -4809,19 +4936,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_disj_conj_identity();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -4837,49 +4964,51 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_opt_arg_disj_conj_identity()
+        public Node __get_opt_arg_disj_conj_identity()
         {
             var node = this.__get_opt_arg_disj_conj_identity_1();
-            return (node != null) ? node : this.__get_opt_arg_disj_conj_identity_2();
+            return ((node) != (null)) ? node : this.__get_opt_arg_disj_conj_identity_2();
         }
 
-        public void __get_opt_arg_disj_conj_identity_1()
+        public Node __get_opt_arg_disj_conj_identity_1()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
-                var oIdx = (idx == 1) ? 0 : 1;
+                var oIdx = ((idx) == (1)) ? 0 : 1;
                 var oDiv = this.children[oIdx].__divided(2);
-                if (oDiv == null)
+                if ((oDiv) == (null))
                 {
                     continue;
                 }
                 var oDivNeg = oDiv.get_copy();
                 oDivNeg.__multiply_by_minus_one();
+                Node neg = null;
                 var node = this.children[idx];
-                if (node.type == NodeType.NEGATION)
+                if ((node.type) == (NodeType.NEGATION))
                 {
-                    var neg = node.children[0];
-                    if ((neg.Equals(oDiv) || neg.Equals(oDivNeg)))
+                    neg = node.children[0];
+                    if (((neg.Equals(oDiv)) || (neg.Equals(oDivNeg))))
                     {
                         return neg;
                     }
                 }
-                if (oDiv.type == NodeType.NEGATION)
+                if ((oDiv.type) == (NodeType.NEGATION))
                 {
                     neg = oDiv.children[0];
                     if (neg.Equals(node))
@@ -4887,7 +5016,7 @@ namespace Gamba.Prototyping.Transpiled
                         return oDiv;
                     }
                 }
-                if (oDivNeg.type == NodeType.NEGATION)
+                if ((oDivNeg.type) == (NodeType.NEGATION))
                 {
                     neg = oDivNeg.children[0];
                     if (neg.Equals(node))
@@ -4896,15 +5025,15 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
                 neg = node.__get_opt_transformed_negated();
-                if (neg != null)
+                if ((neg) != (null))
                 {
-                    if ((neg.Equals(oDiv) || neg.Equals(oDivNeg)))
+                    if (((neg.Equals(oDiv)) || (neg.Equals(oDivNeg))))
                     {
                         return neg;
                     }
                 }
                 neg = oDiv.__get_opt_transformed_negated();
-                if (neg != null)
+                if ((neg) != (null))
                 {
                     if (neg.Equals(node))
                     {
@@ -4912,7 +5041,7 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
                 neg = oDivNeg.__get_opt_transformed_negated();
-                if (neg != null)
+                if ((neg) != (null))
                 {
                     if (neg.Equals(node))
                     {
@@ -4923,26 +5052,27 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __get_opt_arg_disj_conj_identity_2()
+        public Node __get_opt_arg_disj_conj_identity_2()
         {
-            if (this.type != NodeType.NEGATION)
+            if ((this.type) != (NodeType.NEGATION))
             {
                 return null;
             }
             var child = this.children[0];
-            if (child.type != NodeType.INCL_DISJUNCTION)
+            if ((child.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return null;
             }
-            if (child.children.Count() != 2)
+            if ((child.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var negIdx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var negIdx in nums)
             {
                 var ch = child.children[negIdx];
-                var node = null;
-                if (ch.type == NodeType.NEGATION)
+                Node node = null;
+                if ((ch.type) == (NodeType.NEGATION))
                 {
                     node = ch.children[0];
                 }
@@ -4950,11 +5080,11 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     node = ch.__get_opt_transformed_negated();
                 }
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                var oIdx = (negIdx == 1) ? 0 : 1;
+                var oIdx = ((negIdx) == (1)) ? 0 : 1;
                 var other = child.children[oIdx];
                 if (node.__is_double(other))
                 {
@@ -4970,30 +5100,32 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __divided(dynamic divisor)
+        public Node __divided(int divisor)
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                if (this.constant % divisor == 0)
+                if ((((this.constant) % (divisor))) == (0))
                 {
-                    return this.__new_constant_node(this.constant / divisor);
+                    return this.__new_constant_node(((this.constant) / (divisor)));
                 }
             }
-            if (this.type == NodeType.PRODUCT)
+            Node res = null;
+            Node node = null;
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                foreach (var i in range(this.children.Count()))
+                foreach (var i in Range.Get(this.children.Count()))
                 {
-                    var node = this.children[i].__divided(divisor);
-                    if (node == null)
+                    node = this.children[i].__divided(divisor);
+                    if ((node) == (null))
                     {
                         continue;
                     }
-                    var res = this.get_copy();
+                    res = this.get_copy();
                     res.children[i] = node;
                     if (res.children[i].__is_constant(1))
                     {
                         res.children.RemoveAt(i);
-                        if (res.children.Count() == 1)
+                        if ((res.children.Count()) == (1))
                         {
                             return res.children[0];
                         }
@@ -5002,13 +5134,13 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return null;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 res = this.__new_node(NodeType.SUM);
                 foreach (var child in this.children)
                 {
                     node = child.__divided(divisor);
-                    if (node == null)
+                    if ((node) == (null))
                     {
                         return null;
                     }
@@ -5019,9 +5151,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_disj_conj_identity_rule_2()
+        public bool __check_disj_conj_identity_rule_2()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -5030,19 +5162,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_disj_conj_identity_rule_2();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5055,37 +5187,40 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public void __get_opt_arg_disj_conj_identity_rule_2()
+        public Node __get_opt_arg_disj_conj_identity_rule_2()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            int oIdx = 0;
+            Node node = null;
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
-                var oIdx = (idx == 1) ? 0 : 1;
+                oIdx = ((idx) == (1)) ? 0 : 1;
                 if (this.children[oIdx].__is_double(this.children[idx]))
                 {
-                    var node = this.children[idx].get_copy();
+                    node = this.children[idx].get_copy();
                     node.__multiply_by_minus_one();
                     node.__negate();
                     return node;
                 }
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            foreach (var idx in nums)
             {
-                oIdx = (idx == 1) ? 0 : 1;
+                oIdx = ((idx) == (1)) ? 0 : 1;
                 node = this.children[idx].get_copy();
                 node.__multiply_by_minus_one();
                 if (this.children[oIdx].__is_double(node))
@@ -5097,9 +5232,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_disj_neg_disj_identity_rule()
+        public bool __check_disj_neg_disj_identity_rule()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -5108,19 +5243,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_disj_neg_disj_identity_rule();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5133,20 +5268,20 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public void __get_opt_arg_disj_neg_disj_identity_rule()
+        public Node __get_opt_arg_disj_neg_disj_identity_rule()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
@@ -5155,27 +5290,31 @@ namespace Gamba.Prototyping.Transpiled
                 return null;
             }
             var disj = this.children[1];
-            if (disj.type != NodeType.INCL_DISJUNCTION)
+            if ((disj.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return null;
             }
-            if (disj.children.Count() != 2)
+            if ((disj.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            int oIdx = 0;
+            Node node = null;
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
-                var oIdx = (idx == 1) ? 0 : 1;
+                oIdx = ((idx) == (1)) ? 0 : 1;
                 if (disj.children[oIdx].__is_double(disj.children[idx]))
                 {
-                    var node = disj.children[idx].get_copy();
+                    node = disj.children[idx].get_copy();
                     node.__multiply_by_minus_one();
                     return node;
                 }
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
-                oIdx = (idx == 1) ? 0 : 1;
+                oIdx = ((idx) == (1)) ? 0 : 1;
                 node = disj.children[idx].get_copy();
                 node.__multiply_by_minus_one();
                 if (disj.children[oIdx].__is_double(node))
@@ -5186,9 +5325,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_conj_disj_identity_rule()
+        public bool __check_conj_disj_identity_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -5197,19 +5336,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_conj_disj_identity();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5223,27 +5362,27 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_opt_arg_conj_disj_identity()
+        public Node __get_opt_arg_conj_disj_identity()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return null;
             }
             var node = this.__get_opt_arg_conj_disj_identity_1();
-            return (node != null) ? node : this.__get_opt_arg_conj_disj_identity_2();
+            return ((node) != (null)) ? node : this.__get_opt_arg_conj_disj_identity_2();
         }
 
-        public void __get_opt_arg_conj_disj_identity_1()
+        public Node __get_opt_arg_conj_disj_identity_1()
         {
-            Assert.True(this.type == NodeType.INCL_DISJUNCTION);
-            if (this.children.Count() != 2)
+            Assert.True((this.type) == (NodeType.INCL_DISJUNCTION));
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
@@ -5264,18 +5403,19 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __get_opt_arg_conj_disj_identity_2()
+        public Node __get_opt_arg_conj_disj_identity_2()
         {
-            Assert.True(this.type == NodeType.INCL_DISJUNCTION);
-            if (this.children.Count() != 2)
+            Assert.True((this.type) == (NodeType.INCL_DISJUNCTION));
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
                 var neg = this.children[idx].get_copy();
                 neg.__negate();
-                var oIdx = (idx == 1) ? 0 : 1;
+                var oIdx = ((idx) == (1)) ? 0 : 1;
                 var other = this.children[oIdx];
                 var ok = neg.__is_double(other);
                 if (!(ok))
@@ -5295,9 +5435,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_disj_sub_disj_identity_rule()
+        public bool __check_disj_sub_disj_identity_rule()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -5306,19 +5446,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_disj_sub_disj_identity();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5331,35 +5471,36 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public void __get_opt_arg_disj_sub_disj_identity()
+        public Node __get_opt_arg_disj_sub_disj_identity()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
                 var child = this.children[idx];
-                if (child.type != NodeType.INCL_DISJUNCTION)
+                if ((child.type) != (NodeType.INCL_DISJUNCTION))
                 {
                     continue;
                 }
-                if (child.children.Count() != 2)
+                if ((child.children.Count()) != (2))
                 {
                     continue;
                 }
-                var oidx = (idx == 1) ? 0 : 1;
+                var oidx = ((idx) == (1)) ? 0 : 1;
                 var neg = this.children[oidx].get_copy();
                 neg.__multiply_by_minus_one();
                 if (neg.Equals(child.children[0]))
@@ -5374,9 +5515,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_disj_sub_conj_identity_rule()
+        public bool __check_disj_sub_conj_identity_rule()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -5385,19 +5526,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_disj_sub_conj_identity();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5410,31 +5551,32 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public void __get_opt_arg_disj_sub_conj_identity()
+        public Node __get_opt_arg_disj_sub_conj_identity()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
                 var child = this.children[idx];
-                if (child.type != NodeType.PRODUCT)
+                if ((child.type) != (NodeType.PRODUCT))
                 {
                     continue;
                 }
-                if (child.children.Count() != 2)
+                if ((child.children.Count()) != (2))
                 {
                     continue;
                 }
@@ -5443,11 +5585,11 @@ namespace Gamba.Prototyping.Transpiled
                     continue;
                 }
                 var conj = child.children[1];
-                if (conj.type != NodeType.CONJUNCTION)
+                if ((conj.type) != (NodeType.CONJUNCTION))
                 {
                     continue;
                 }
-                var oidx = (idx == 1) ? 0 : 1;
+                var oidx = ((idx) == (1)) ? 0 : 1;
                 var other = this.children[oidx];
                 foreach (var c in conj.children)
                 {
@@ -5460,9 +5602,9 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_conj_add_conj_identity_rule()
+        public bool __check_conj_add_conj_identity_rule()
         {
-            if (this.type != NodeType.CONJUNCTION)
+            if ((this.type) != (NodeType.CONJUNCTION))
             {
                 return false;
             }
@@ -5471,19 +5613,19 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var node = child1.__get_opt_arg_conj_add_conj_identity();
-                if (node == null)
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5496,31 +5638,32 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public void __get_opt_arg_conj_add_conj_identity()
+        public Node __get_opt_arg_conj_add_conj_identity()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return null;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return null;
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
                 var child = this.children[idx];
-                if (child.type != NodeType.CONJUNCTION)
+                if ((child.type) != (NodeType.CONJUNCTION))
                 {
                     continue;
                 }
-                var oidx = (idx == 1) ? 0 : 1;
+                var oidx = ((idx) == (1)) ? 0 : 1;
                 var oneg = this.children[oidx].get_copy();
                 oneg.__negate();
                 foreach (var c in child.children)
@@ -5534,19 +5677,19 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_conj_conj_disj_rule()
+        public bool __check_conj_conj_disj_rule()
         {
             return this.__check_nested_bitwise_rule(NodeType.CONJUNCTION);
         }
 
-        public dynamic __check_disj_disj_conj_rule()
+        public bool __check_disj_disj_conj_rule()
         {
             return this.__check_nested_bitwise_rule(NodeType.INCL_DISJUNCTION);
         }
 
-        public dynamic __check_nested_bitwise_rule(dynamic t)
+        public bool __check_nested_bitwise_rule(NodeType t)
         {
-            if (this.type != t)
+            if ((this.type) != (t))
             {
                 return false;
             }
@@ -5555,20 +5698,20 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var (node1, node2) = child1.__get_opt_arg_nested_bitwise(t);
-                Assert.True(node1 == null == node2 == null);
-                if (node1 == null)
+                Assert.True(((node1) == (null)) == ((node2) == (null)));
+                if ((node1) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5580,20 +5723,20 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_opt_arg_nested_bitwise(dynamic t)
+        public (Node, Node) __get_opt_arg_nested_bitwise(NodeType t)
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return (null, null);
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return (null, null);
             }
@@ -5602,24 +5745,25 @@ namespace Gamba.Prototyping.Transpiled
                 return (null, null);
             }
             var child = this.children[1];
-            if (child.type != t)
+            if ((child.type) != (t))
             {
                 return (null, null);
             }
-            if (child.children.Count() != 2)
+            if ((child.children.Count()) != (2))
             {
                 return (null, null);
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
-                var oidx = (idx == 1) ? 0 : 1;
+                var oidx = ((idx) == (1)) ? 0 : 1;
                 var c = child.children[idx];
-                var ot = (t == NodeType.INCL_DISJUNCTION) ? NodeType.CONJUNCTION : NodeType.INCL_DISJUNCTION;
-                if (c.type != ot)
+                var ot = ((t) == (NodeType.INCL_DISJUNCTION)) ? NodeType.CONJUNCTION : NodeType.INCL_DISJUNCTION;
+                if ((c.type) != (ot))
                 {
                     continue;
                 }
-                if (c.children.Count() != 2)
+                if ((c.children.Count()) != (2))
                 {
                     return (null, null);
                 }
@@ -5637,9 +5781,9 @@ namespace Gamba.Prototyping.Transpiled
             return (null, null);
         }
 
-        public dynamic __check_disj_disj_conj_rule_2()
+        public bool __check_disj_disj_conj_rule_2()
         {
-            if (this.type != NodeType.INCL_DISJUNCTION)
+            if ((this.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return false;
             }
@@ -5648,20 +5792,20 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var child1 = this.children[i];
                 var (node, conj) = child1.__get_opt_pair_disj_disj_conj_2();
-                Assert.True(node == null == conj == null);
-                if (node == null)
+                Assert.True(((node) == (null)) == ((conj) == (null)));
+                if ((node) == (null))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (j == i)
+                    if ((j) == (i))
                     {
                         continue;
                     }
@@ -5673,7 +5817,7 @@ namespace Gamba.Prototyping.Transpiled
                         i -= 1;
                         break;
                     }
-                    if (child2.type != NodeType.CONJUNCTION)
+                    if ((child2.type) != (NodeType.CONJUNCTION))
                     {
                         continue;
                     }
@@ -5691,20 +5835,20 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return changed;
         }
 
-        public dynamic __get_opt_pair_disj_disj_conj_2()
+        public (Node, Node) __get_opt_pair_disj_disj_conj_2()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return (null, null);
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return (null, null);
             }
@@ -5713,19 +5857,20 @@ namespace Gamba.Prototyping.Transpiled
                 return (null, null);
             }
             var disj = this.children[1];
-            if (disj.type != NodeType.INCL_DISJUNCTION)
+            if ((disj.type) != (NodeType.INCL_DISJUNCTION))
             {
                 return (null, null);
             }
-            if (disj.children.Count() != 2)
+            if ((disj.children.Count()) != (2))
             {
                 return (null, null);
             }
-            foreach (var idx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var idx in nums)
             {
-                var oIdx = (idx == 1) ? 0 : 1;
+                var oIdx = ((idx) == (1)) ? 0 : 1;
                 var conj = disj.children[idx];
-                if (conj.type != NodeType.CONJUNCTION)
+                if ((conj.type) != (NodeType.CONJUNCTION))
                 {
                     continue;
                 }
@@ -5739,7 +5884,7 @@ namespace Gamba.Prototyping.Transpiled
             return (null, null);
         }
 
-        public dynamic refine_after_substitution()
+        public bool refine_after_substitution()
         {
             var changed = false;
             foreach (var c in this.children)
@@ -5804,13 +5949,13 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public dynamic __check_bitwise_in_sums_cancel_terms()
+        public bool __check_bitwise_in_sums_cancel_terms()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
-            if (this.children.Count() > MAX_CHILDREN_TO_TRANSFORM_BITW)
+            if ((this.children.Count()) > (MAX_CHILDREN_TO_TRANSFORM_BITW))
             {
                 return false;
             }
@@ -5818,15 +5963,15 @@ namespace Gamba.Prototyping.Transpiled
             var i = 0;
             while (true)
             {
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     return changed;
                 }
                 var child = this.children[i];
-                var factor = 1;
-                if (child.type == NodeType.PRODUCT)
+                long factor = 1;
+                if ((child.type) == (NodeType.PRODUCT))
                 {
-                    if ((child.children.Count() != 2 || child.children[0].type != NodeType.CONSTANT))
+                    if ((((child.children.Count()) != (2)) || ((child.children[0].type) != (NodeType.CONSTANT))))
                     {
                         i += 1;
                         continue;
@@ -5834,40 +5979,41 @@ namespace Gamba.Prototyping.Transpiled
                     factor = child.children[0].constant;
                     child = child.children[1];
                 }
-                if ((!((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(child.type)) || child.children.Count() != 2))
+                List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION };
+                if (((!((types).Contains(child.type))) || ((child.children.Count()) != (2))))
                 {
                     i += 1;
                     continue;
                 }
                 var newIdx = this.__check_transform_bitwise_in_sum_cancel(i, child, factor);
-                if (newIdx == null)
+                if ((newIdx) == (null))
                 {
                     i += 1;
                     continue;
                 }
-                Assert.True(this.children[newIdx] == child);
-                if (this.children.Count() == 1)
+                Assert.True((this.children[newIdx]) == (child));
+                if ((this.children.Count()) == (1))
                 {
                     this.copy(this.children[0]);
                     return true;
                 }
-                i = newIdx + 1;
+                i = ((newIdx) + (1));
             }
             return changed;
         }
 
-        public void __check_transform_bitwise_in_sum_cancel(dynamic idx, dynamic bitw, dynamic factor)
+        public NullableI32 __check_transform_bitwise_in_sum_cancel(int idx, Node bitw, long factor)
         {
-            var withToXor = factor % 2 == 0;
+            var withToXor = (((factor) % (2))) == (0);
             var newIdx = this.__check_transform_bitwise_in_sum_cancel_impl(false, idx, bitw, factor);
-            if (newIdx != null)
+            if ((newIdx) != (null))
             {
                 return newIdx;
             }
             if (withToXor)
             {
-                newIdx = this.__check_transform_bitwise_in_sum_cancel_impl(true, idx, bitw, factor / 2);
-                if (newIdx != null)
+                newIdx = this.__check_transform_bitwise_in_sum_cancel_impl(true, idx, bitw, ((factor) / (2)));
+                if ((newIdx) != (null))
                 {
                     return newIdx;
                 }
@@ -5875,10 +6021,10 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __check_transform_bitwise_in_sum_cancel_impl(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor)
+        public NullableI32 __check_transform_bitwise_in_sum_cancel_impl(bool toXor, int idx, Node bitw, long factor)
         {
-            Assert.True(this.type == NodeType.SUM);
-            Assert.True(idx < this.children.Count());
+            Assert.True((this.type) == (NodeType.SUM));
+            Assert.True((idx) < (this.children.Count()));
             var opSum = this.__new_node(NodeType.SUM);
             foreach (var op in bitw.children)
             {
@@ -5887,15 +6033,15 @@ namespace Gamba.Prototyping.Transpiled
             opSum.__multiply(factor);
             opSum.expand();
             opSum.refine();
-            var maxc = min(opSum.children.Count(), MAX_CHILDREN_SUMMED_UP);
-            foreach (var i in range(1, 2 * *this.children.Count() - 1))
+            var maxc = Math.Min(opSum.children.Count(), MAX_CHILDREN_SUMMED_UP);
+            foreach (var i in Range.Get(1, LongPower(2, ((this.children.Count()) - (1)))))
             {
-                if (popcount(i) > maxc)
+                if ((popcount(i)) > (maxc))
                 {
                     continue;
                 }
                 var newIdx = this.__check_transform_bitwise_for_comb(toXor, idx, bitw, factor, opSum, i);
-                if (newIdx != null)
+                if ((newIdx) != (null))
                 {
                     return newIdx;
                 }
@@ -5903,41 +6049,41 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_transform_bitwise_for_comb(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic opSum, dynamic combIdx)
+        public NullableI32 __check_transform_bitwise_for_comb(bool toXor, int idx, Node bitw, long factor, Node opSum, int combIdx)
         {
             var n = combIdx;
             var diff = opSum.get_copy();
-            var indices = new List<dynamic>() { };
-            foreach (var j in range(this.children.Count()))
+            List<int> indices = new() { };
+            foreach (var j in Range.Get(this.children.Count()))
             {
-                if (j == idx)
+                if ((j) == (idx))
                 {
                     continue;
                 }
-                if (n & 1 == 1)
+                if ((((n) & (1))) == (1))
                 {
                     indices.Add(j);
                     diff.__add(this.children[j]);
                 }
-                n = n >> 1;
+                n = ((n) >> (1));
             }
             diff.expand();
             diff.refine();
-            if (diff.type != NodeType.CONSTANT)
+            if ((diff.type) != (NodeType.CONSTANT))
             {
-                Assert.True(this.__modulus % 2 == 0);
-                var opSum = this.__new_node(NodeType.SUM);
+                Assert.True((((this.__modulus) % (2))) == (0));
+                opSum = this.__new_node(NodeType.SUM);
                 foreach (var op in bitw.children)
                 {
                     opSum.children.Add(op.get_copy());
                 }
-                var hmod = this.__modulus / 2;
+                var hmod = ((this.__modulus) / (2));
                 opSum.__multiply(-(hmod));
                 var diff2 = diff.get_copy();
                 diff2.__add(opSum);
                 diff2.expand();
                 diff2.refine();
-                if (diff2.type == NodeType.CONSTANT)
+                if ((diff2.type) == (NodeType.CONSTANT))
                 {
                     diff = diff2;
                     factor += hmod;
@@ -5946,17 +6092,17 @@ namespace Gamba.Prototyping.Transpiled
             return this.__check_transform_bitwise_for_diff(toXor, idx, bitw, factor, diff, indices);
         }
 
-        public void __check_transform_bitwise_for_diff(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic diff, dynamic indices)
+        public NullableI32 __check_transform_bitwise_for_diff(bool toXor, int idx, Node bitw, long factor, Node diff, List<int> indices)
         {
             var newIdx = this.__check_transform_bitwise_for_diff_full(toXor, idx, bitw, factor, diff, indices);
-            if (newIdx != null)
+            if ((newIdx) != (null))
             {
                 return newIdx;
             }
-            if (indices.Count() > 1)
+            if ((indices.Count()) > (1))
             {
                 newIdx = this.__check_transform_bitwise_for_diff_merge(toXor, idx, bitw, factor, diff, indices);
-                if (newIdx != null)
+                if ((newIdx) != (null))
                 {
                     return newIdx;
                 }
@@ -5964,33 +6110,33 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_transform_bitwise_for_diff_full(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic diff, dynamic indices)
+        public NullableI32 __check_transform_bitwise_for_diff_full(bool toXor, int idx, Node bitw, long factor, Node diff, List<int> indices)
         {
-            if (diff.type != NodeType.CONSTANT)
+            if ((diff.type) != (NodeType.CONSTANT))
             {
                 return null;
             }
-            if ((!(toXor) || bitw.type == NodeType.CONJUNCTION))
+            if (((!(toXor)) || ((bitw.type) == (NodeType.CONJUNCTION))))
             {
-                var factor = -(factor);
+                factor = -(factor);
             }
             bitw.type = bitw.__get_transformed_bitwise_type(toXor);
-            if (factor - 1 % this.__modulus != 0)
+            if ((((((factor) - (1))) % (this.__modulus))) != (0))
             {
                 bitw.__multiply(factor);
             }
             this.children[idx] = bitw;
-            foreach (var j in range(indices.Count() - 1, -(1), -(1)))
+            foreach (var j in Range.Get(((indices.Count()) - (1)), -(1), -(1)))
             {
                 this.children.RemoveAt(indices[j]);
-                if (indices[j] < idx)
+                if ((indices[j]) < (idx))
                 {
                     idx -= 1;
                 }
             }
             if (!(diff.__is_constant(0)))
             {
-                if (this.children[0].type != NodeType.CONSTANT)
+                if ((this.children[0].type) != (NodeType.CONSTANT))
                 {
                     idx += 1;
                 }
@@ -6004,39 +6150,39 @@ namespace Gamba.Prototyping.Transpiled
             return idx;
         }
 
-        public void __check_transform_bitwise_for_diff_merge(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic diff, dynamic indices)
+        public NullableI32 __check_transform_bitwise_for_diff_merge(bool toXor, int idx, Node bitw, long factor, Node diff, List<int> indices)
         {
             var constN = diff.__get_opt_const_factor();
             foreach (var i in indices)
             {
                 var child = this.children[i];
                 var constC = child.__get_opt_const_factor();
-                if (!(diff.__equals_neglecting_constants(child, constN != null, constC != null)))
+                if (!(diff.__equals_neglecting_constants(child, (constN) != (null), (constC) != (null))))
                 {
                     continue;
                 }
-                if ((!(toXor) || bitw.type == NodeType.CONJUNCTION))
+                if (((!(toXor)) || ((bitw.type) == (NodeType.CONJUNCTION))))
                 {
-                    var factor = -(factor);
+                    factor = -(factor);
                 }
                 bitw.type = bitw.__get_transformed_bitwise_type(toXor);
-                if (factor - 1 % this.__modulus != 0)
+                if ((((((factor) - (1))) % (this.__modulus))) != (0))
                 {
                     bitw.__multiply(factor);
                 }
                 this.children[idx] = bitw;
-                if (constC != null)
+                if ((constC) != (null))
                 {
-                    Assert.True(child.type == NodeType.PRODUCT);
-                    Assert.True(child.children[0].type == NodeType.CONSTANT);
-                    if (constN != null)
+                    Assert.True((child.type) == (NodeType.PRODUCT));
+                    Assert.True((child.children[0].type) == (NodeType.CONSTANT));
+                    if ((constN) != (null))
                     {
                         child.children[0].constant = constN;
                     }
                     else
                     {
                         child.children.RemoveAt(0);
-                        if (child.children.Count() == 1)
+                        if ((child.children.Count()) == (1))
                         {
                             child.copy(child.children[0]);
                         }
@@ -6044,17 +6190,17 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 else
                 {
-                    if (constN != null)
+                    if ((constN) != (null))
                     {
                         child.__multiply(constN);
                     }
                 }
-                foreach (var j in range(indices.Count() - 1, -(1), -(1)))
+                foreach (var j in Range.Get(((indices.Count()) - (1)), -(1), -(1)))
                 {
-                    if (indices[j] != i)
+                    if ((indices[j]) != (i))
                     {
                         this.children.RemoveAt(indices[j]);
-                        if (indices[j] < idx)
+                        if ((indices[j]) < (idx))
                         {
                             idx -= 1;
                         }
@@ -6065,14 +6211,15 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __get_transformed_bitwise_type(dynamic toXor)
+        public NodeType __get_transformed_bitwise_type(bool toXor)
         {
-            Assert.True(((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(this.type)));
+            List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION };
+            Assert.True(((types).Contains(this.type)));
             if (toXor)
             {
                 return NodeType.EXCL_DISJUNCTION;
             }
-            if (this.type == NodeType.CONJUNCTION)
+            if ((this.type) == (NodeType.CONJUNCTION))
             {
                 return NodeType.INCL_DISJUNCTION;
             }
@@ -6081,11 +6228,11 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_bitwise_in_sums_replace_terms()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
-            if (this.children.Count() > MAX_CHILDREN_TO_TRANSFORM_BITW)
+            if ((this.children.Count()) > (MAX_CHILDREN_TO_TRANSFORM_BITW))
             {
                 return false;
             }
@@ -6093,15 +6240,15 @@ namespace Gamba.Prototyping.Transpiled
             var i = 0;
             while (true)
             {
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     return changed;
                 }
                 var child = this.children[i];
-                var factor = 1;
-                if (child.type == NodeType.PRODUCT)
+                long factor = 1;
+                if ((child.type) == (NodeType.PRODUCT))
                 {
-                    if ((child.children.Count() != 2 || child.children[0].type != NodeType.CONSTANT))
+                    if ((((child.children.Count()) != (2)) || ((child.children[0].type) != (NodeType.CONSTANT))))
                     {
                         i += 1;
                         continue;
@@ -6109,41 +6256,42 @@ namespace Gamba.Prototyping.Transpiled
                     factor = child.children[0].constant;
                     child = child.children[1];
                 }
-                if ((!((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(child.type)) || child.children.Count() != 2))
+                List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION };
+                if (((!((types).Contains(child.type))) || ((child.children.Count()) != (2))))
                 {
                     i += 1;
                     continue;
                 }
                 var newIdx = this.__check_transform_bitwise_in_sum_replace(i, child, factor);
-                if (newIdx == null)
+                if ((newIdx) == (null))
                 {
                     i += 1;
                     continue;
                 }
-                Assert.True(this.children[newIdx] == child);
-                Assert.True(this.children.Count() > 1);
-                i = newIdx + 1;
+                Assert.True((this.children[newIdx]) == (child));
+                Assert.True((this.children.Count()) > (1));
+                i = ((newIdx) + (1));
             }
             return false;
         }
 
-        public void __check_transform_bitwise_in_sum_replace(dynamic idx, dynamic bitw, dynamic factor)
+        public NullableI32 __check_transform_bitwise_in_sum_replace(int idx, Node bitw, long factor)
         {
             var cIdx = bitw.__get_index_of_more_complex_operand();
-            if (cIdx == null)
+            if ((cIdx) == (null))
             {
                 return null;
             }
-            var withToXor = factor % 2 == 0;
+            var withToXor = (((factor) % (2))) == (0);
             var newIdx = this.__check_transform_bitwise_in_sum_replace_impl(false, idx, bitw, cIdx, factor);
-            if (newIdx != null)
+            if ((newIdx) != (null))
             {
                 return newIdx;
             }
             if (withToXor)
             {
-                newIdx = this.__check_transform_bitwise_in_sum_replace_impl(true, idx, bitw, cIdx, factor / 2);
-                if (newIdx != null)
+                newIdx = this.__check_transform_bitwise_in_sum_replace_impl(true, idx, bitw, cIdx, ((factor) / (2)));
+                if ((newIdx) != (null))
                 {
                     return newIdx;
                 }
@@ -6151,23 +6299,22 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __get_index_of_more_complex_operand()
+        public NullableI32 __get_index_of_more_complex_operand()
         {
-            var idk = new List() { 0, 1, 2 };
             Assert.True(this.__is_bitwise_binop());
-            Assert.True(this.children.Count() == 2);
+            Assert.True((this.children.Count()) == (2));
             var (c0, c1) = (this.children[0], this.children[1]);
             c0.mark_linear();
             c1.mark_linear();
             var l0 = c0.is_linear();
             var l1 = c1.is_linear();
-            if (l0 != l1)
+            if ((l0) != (l1))
             {
                 return (l1) ? 0 : 1;
             }
-            var b0 = c0.state == NodeState.BITWISE;
-            var b1 = c1.state == NodeState.BITWISE;
-            if (b0 != b1)
+            var b0 = (c0.state) == (NodeState.BITWISE);
+            var b1 = (c1.state) == (NodeState.BITWISE);
+            if ((b0) != (b1))
             {
                 return (b1) ? 0 : 1;
             }
@@ -6178,21 +6325,21 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __check_transform_bitwise_in_sum_replace_impl(dynamic toXor, dynamic idx, dynamic bitw, dynamic cIdx, dynamic factor)
+        public NullableI32 __check_transform_bitwise_in_sum_replace_impl(bool toXor, int idx, Node bitw, int cIdx, long factor)
         {
-            Assert.True(this.type == NodeType.SUM);
-            Assert.True(idx < this.children.Count());
+            Assert.True((this.type) == (NodeType.SUM));
+            Assert.True((idx) < (this.children.Count()));
             var cOp = bitw.children[cIdx].get_copy();
             cOp.__multiply(factor);
             var maxc = MAX_CHILDREN_SUMMED_UP;
-            foreach (var i in range(1, 2 * *this.children.Count() - 1))
+            foreach (var i in Range.Get(1, LongPower(2, ((this.children.Count()) - (1)))))
             {
-                if (popcount(i) > maxc)
+                if ((popcount(i)) > (maxc))
                 {
                     continue;
                 }
                 var newIdx = this.__check_transform_bitwise_replace_for_comb(toXor, idx, bitw, factor, cOp, cIdx, i);
-                if (newIdx != null)
+                if ((newIdx) != (null))
                 {
                     return newIdx;
                 }
@@ -6200,64 +6347,64 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __check_transform_bitwise_replace_for_comb(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic cOp, dynamic cIdx, dynamic combIdx)
+        public NullableI32 __check_transform_bitwise_replace_for_comb(bool toXor, int idx, Node bitw, long factor, Node cOp, int cIdx, int combIdx)
         {
             var n = combIdx;
             var diff = cOp.get_copy();
-            var indices = new List<dynamic>() { };
-            foreach (var j in range(this.children.Count()))
+            List<int> indices = new() { };
+            foreach (var j in Range.Get(this.children.Count()))
             {
-                if (j == idx)
+                if ((j) == (idx))
                 {
                     continue;
                 }
-                if (n & 1 == 1)
+                if ((((n) & (1))) == (1))
                 {
                     indices.Add(j);
                     diff.__add(this.children[j]);
                 }
-                n = n >> 1;
+                n = ((n) >> (1));
             }
             diff.expand();
             diff.refine();
             return this.__check_transform_bitwise_replace_for_diff(toXor, idx, bitw, factor, diff, cIdx, indices);
         }
 
-        public dynamic __check_transform_bitwise_replace_for_diff(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic diff, dynamic cIdx, dynamic indices)
+        public NullableI32 __check_transform_bitwise_replace_for_diff(bool toXor, int idx, Node bitw, long factor, Node diff, int cIdx, List<int> indices)
         {
             return this.__check_transform_bitwise_replace_for_diff_full(toXor, idx, bitw, factor, diff, cIdx, indices);
         }
 
-        public dynamic __check_transform_bitwise_replace_for_diff_full(dynamic toXor, dynamic idx, dynamic bitw, dynamic factor, dynamic diff, dynamic cIdx, dynamic indices)
+        public NullableI32 __check_transform_bitwise_replace_for_diff_full(bool toXor, int idx, Node bitw, long factor, Node diff, int cIdx, List<int> indices)
         {
-            if (diff.type != NodeType.CONSTANT)
+            if ((diff.type) != (NodeType.CONSTANT))
             {
                 return null;
             }
-            var op = bitw.children[(cIdx == 1) ? 0 : 1].get_copy();
+            var op = bitw.children[((cIdx) == (1)) ? 0 : 1].get_copy();
             op.__multiply(factor);
             this.children.Add(op);
-            if ((!(toXor) || bitw.type == NodeType.CONJUNCTION))
+            if (((!(toXor)) || ((bitw.type) == (NodeType.CONJUNCTION))))
             {
-                var factor = -(factor);
+                factor = -(factor);
             }
             bitw.type = bitw.__get_transformed_bitwise_type(toXor);
-            if (factor - 1 % this.__modulus != 0)
+            if ((((((factor) - (1))) % (this.__modulus))) != (0))
             {
                 bitw.__multiply(factor);
             }
             this.children[idx] = bitw;
-            foreach (var j in range(indices.Count() - 1, -(1), -(1)))
+            foreach (var j in Range.Get(((indices.Count()) - (1)), -(1), -(1)))
             {
                 this.children.RemoveAt(indices[j]);
-                if (indices[j] < idx)
+                if ((indices[j]) < (idx))
                 {
                     idx -= 1;
                 }
             }
             if (!(diff.__is_constant(0)))
             {
-                if (this.children[0].type != NodeType.CONSTANT)
+                if ((this.children[0].type) != (NodeType.CONSTANT))
                 {
                     idx += 1;
                 }
@@ -6271,75 +6418,77 @@ namespace Gamba.Prototyping.Transpiled
             return idx;
         }
 
-        public dynamic __check_disj_involving_xor_in_sums()
+        public bool __check_disj_involving_xor_in_sums()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var changed = false;
             foreach (var child in this.children)
             {
-                var factor = 1;
+                long factor = 1;
                 var node = child;
-                if (node.type == NodeType.PRODUCT)
+                if ((node.type) == (NodeType.PRODUCT))
                 {
-                    if (node.children.Count() != 2)
+                    if ((node.children.Count()) != (2))
                     {
                         continue;
                     }
-                    if (node.children[0].type != NodeType.CONSTANT)
+                    if ((node.children[0].type) != (NodeType.CONSTANT))
                     {
                         continue;
                     }
                     factor = node.children[0].constant;
                     node = node.children[1];
                 }
-                if (node.type != NodeType.INCL_DISJUNCTION)
+                if ((node.type) != (NodeType.INCL_DISJUNCTION))
                 {
                     continue;
                 }
-                if (node.children.Count() != 2)
+                if ((node.children.Count()) != (2))
                 {
                     continue;
                 }
-                var xorIdx = null;
-                if (node.children[0].type == NodeType.EXCL_DISJUNCTION)
+                NullableI32 xorIdx = null;
+                if ((node.children[0].type) == (NodeType.EXCL_DISJUNCTION))
                 {
                     xorIdx = 0;
                 }
-                if (node.children[1].type == NodeType.EXCL_DISJUNCTION)
+                if ((node.children[1].type) == (NodeType.EXCL_DISJUNCTION))
                 {
-                    if (xorIdx != null)
+                    if ((xorIdx) != (null))
                     {
                         continue;
                     }
                     xorIdx = 1;
                 }
-                if (xorIdx == null)
+                if ((xorIdx) == (null))
                 {
                     continue;
                 }
-                var oIdx = (xorIdx == 0) ? 1 : 0;
+                var oIdx = ((xorIdx) == (0)) ? 1 : 0;
                 var xor = node.children[xorIdx];
                 var o = node.children[oIdx];
-                if (xor.children.Count() != 2)
+                if ((xor.children.Count()) != (2))
                 {
                     continue;
                 }
                 if (o.Equals(xor.children[0]))
                 {
-                    o = this.__new_node_with_children(NodeType.CONJUNCTION, new List<dynamic>() { o.__get_shallow_copy(), xor.children[1].get_copy() });
+                    List<Node> conj0_children = new() { o.__get_shallow_copy(), xor.children[1].get_copy() };
+                    o = this.__new_node_with_children(NodeType.CONJUNCTION, conj0_children);
                 }
                 else
                 {
                     if (o.Equals(xor.children[1]))
                     {
-                        o = this.__new_node_with_children(NodeType.CONJUNCTION, new List<dynamic>() { o.__get_shallow_copy(), xor.children[0].get_copy() });
+                        List<Node> conj1_children = new() { o.__get_shallow_copy(), xor.children[0].get_copy() };
+                        o = this.__new_node_with_children(NodeType.CONJUNCTION, conj1_children);
                     }
                     else
                     {
-                        if (o.type != NodeType.CONJUNCTION)
+                        if ((o.type) != (NodeType.CONJUNCTION))
                         {
                             continue;
                         }
@@ -6360,7 +6509,7 @@ namespace Gamba.Prototyping.Transpiled
                                         found1 = true;
                                     }
                                 }
-                                if ((found0 && found1))
+                                if (((found0) && (found1)))
                                 {
                                     break;
                                 }
@@ -6388,13 +6537,14 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 o.__inspect_constants();
                 changed = true;
-                if (factor == 1)
+                if ((factor) == (1))
                 {
                     this.children.Add(xor.__get_shallow_copy());
                 }
                 else
                 {
-                    var prod = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { this.__new_constant_node(factor), xor.__get_shallow_copy() });
+                    List<Node> prod_children = new() { this.__new_constant_node(factor), xor.__get_shallow_copy() };
+                    var prod = this.__new_node_with_children(NodeType.PRODUCT, prod_children);
                     this.children.Add(prod);
                 }
                 node.copy(o);
@@ -6404,32 +6554,33 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_xor_involving_disj()
         {
-            if (this.type != NodeType.EXCL_DISJUNCTION)
+            if ((this.type) != (NodeType.EXCL_DISJUNCTION))
             {
                 return false;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return false;
             }
-            foreach (var disjIdx in new List<dynamic>() { 0, 1 })
+            List<int> nums = new() { 0, 1 };
+            foreach (var disjIdx in nums)
             {
                 var disj = this.children[disjIdx];
-                if (disj.type != NodeType.INCL_DISJUNCTION)
+                if ((disj.type) != (NodeType.INCL_DISJUNCTION))
                 {
                     continue;
                 }
-                var oIdx = (disjIdx == 0) ? 1 : 0;
+                var oIdx = ((disjIdx) == (0)) ? 1 : 0;
                 var other = this.children[oIdx];
                 var idx = disj.__get_index_of_child(other);
-                if (idx == null)
+                if ((idx) == (null))
                 {
                     continue;
                 }
                 other.__negate();
                 this.type = NodeType.CONJUNCTION;
                 disj.children.RemoveAt(idx);
-                if (disj.children.Count() == 1)
+                if ((disj.children.Count()) == (1))
                 {
                     this.children[disjIdx] = disj.children[0];
                 }
@@ -6440,11 +6591,11 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_negative_bitw_inverse()
         {
-            if (this.type != NodeType.PRODUCT)
+            if ((this.type) != (NodeType.PRODUCT))
             {
                 return false;
             }
-            if (this.children.Count() != 2)
+            if ((this.children.Count()) != (2))
             {
                 return false;
             }
@@ -6453,15 +6604,16 @@ namespace Gamba.Prototyping.Transpiled
                 return false;
             }
             var node = this.children[1];
-            if (!((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION }).Contains(node.type)))
+            List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.INCL_DISJUNCTION };
+            if (!((types).Contains(node.type)))
             {
                 return false;
             }
-            if (node.children.Count() != 2)
+            if ((node.children.Count()) != (2))
             {
                 return false;
             }
-            if (node.children[0].type == NodeType.CONSTANT)
+            if ((node.children[0].type) == (NodeType.CONSTANT))
             {
                 return false;
             }
@@ -6471,7 +6623,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            if (node.type == NodeType.CONJUNCTION)
+            if ((node.type) == (NodeType.CONJUNCTION))
             {
                 node.type = NodeType.INCL_DISJUNCTION;
             }
@@ -6485,29 +6637,29 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_xor_pairs_with_constants()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var l = this.__collect_indices_of_bitw_with_constants_in_sum(NodeType.EXCL_DISJUNCTION);
-            if (l.Count() == 0)
+            if ((l.Count()) == (0))
             {
                 return false;
             }
-            var toRemove = new List<dynamic>() { };
-            var const = 0;
+            List<int> toRemove = new() { };
+            long _const = 0;
             foreach (var pair in l)
             {
                 var factor = pair[0];
                 var sublist = pair[1];
                 var done = sublist.Where(x => ).Select(x => false);
-                foreach (var i in range(sublist.Count() - 1, 0, -(1)))
+                foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
                     if (done[i])
                     {
                         continue;
                     }
-                    foreach (var j in range(0, i))
+                    foreach (var j in Range.Get(0, i))
                     {
                         if (done[j])
                         {
@@ -6515,26 +6667,26 @@ namespace Gamba.Prototyping.Transpiled
                         }
                         var firstIdx = sublist[i];
                         var first = this.children[firstIdx];
-                        if (first.type == NodeType.PRODUCT)
+                        if ((first.type) == (NodeType.PRODUCT))
                         {
                             first = first.children[1];
                         }
-                        Assert.True(first.type == NodeType.EXCL_DISJUNCTION);
+                        Assert.True((first.type) == (NodeType.EXCL_DISJUNCTION));
                         var secIdx = sublist[j];
                         var second = this.children[secIdx];
-                        if (second.type == NodeType.PRODUCT)
+                        if ((second.type) == (NodeType.PRODUCT))
                         {
                             second = second.children[1];
                         }
-                        Assert.True(second.type == NodeType.EXCL_DISJUNCTION);
-                        var firstConst = first.children[0].constant % this.__modulus;
-                        var secConst = second.children[0].constant % this.__modulus;
-                        if (firstConst & secConst != 0)
+                        Assert.True((second.type) == (NodeType.EXCL_DISJUNCTION));
+                        var firstConst = ((first.children[0].constant) % (this.__modulus));
+                        var secConst = ((second.children[0].constant) % (this.__modulus));
+                        if ((((firstConst) & (secConst))) != (0))
                         {
                             continue;
                         }
                         var (_, remove, add) = this.__merge_bitwise_terms(firstIdx, secIdx, first, second, factor, first.children[0].constant, second.children[0].constant);
-                        const += add;
+                        _const += add;
                         done[j] = true;
                         Assert.True(remove);
                         if (remove)
@@ -6544,58 +6696,58 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (toRemove.Count() == 0)
+            if ((toRemove.Count()) == (0))
             {
                 return false;
             }
-            toRemove.sort();
-            foreach (var idx in reversed(toRemove))
+            toRemove.Sort();
+            foreach (var idx in ListUtil.Reversed(toRemove))
             {
                 this.children.RemoveAt(idx);
             }
-            if (this.children[0].type == NodeType.CONSTANT)
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
-                this.children[0].__set_and_reduce_constant(this.children[0].constant + const);
+                this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (_const)));
             }
             else
             {
-                this.children.Insert(0, this.__new_constant_node(const));
+                this.children.Insert(0, this.__new_constant_node(_const));
             }
-            if ((this.children.Count() > 1 && this.children[0].__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (this.children[0].__is_constant(0))))
             {
                 this.children.RemoveAt(0);
             }
             return true;
         }
 
-        public dynamic __collect_indices_of_bitw_with_constants_in_sum(dynamic expType)
+        public List<(int, List<int>)> __collect_indices_of_bitw_with_constants_in_sum(NodeType expType)
         {
-            Assert.True(this.type == NodeType.SUM);
-            var l = new List<dynamic>() { };
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.SUM));
+            var l = new() { };
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_with_constant(expType);
-                Assert.True(factor == null == node == null);
-                if (factor == null)
+                Assert.True(((factor) == (null)) == ((node) == (null)));
+                if ((factor) == (null))
                 {
                     continue;
                 }
                 var found = false;
                 foreach (var pair in l)
                 {
-                    if (factor != pair[0])
+                    if ((factor) != (pair[0]))
                     {
                         continue;
                     }
                     var sublist = pair[1];
                     var firstIdx = sublist[0];
                     var first = this.children[firstIdx];
-                    if (first.type == NodeType.PRODUCT)
+                    if ((first.type) == (NodeType.PRODUCT))
                     {
                         first = first.children[1];
                     }
-                    Assert.True(first.type == expType);
-                    if (node.children.Count() != first.children.Count())
+                    Assert.True((first.type) == (expType));
+                    if ((node.children.Count()) != (first.children.Count()))
                     {
                         continue;
                     }
@@ -6609,40 +6761,40 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if (!(found))
                 {
-                    l.Add(new List<dynamic>() { factor, new List<dynamic>() { i } });
+                    l.Add(new() { factor, new() { i } });
                 }
             }
             return l;
         }
 
-        public dynamic __get_factor_of_bitw_with_constant(void expType = null)
+        public (NullableI64, Node) __get_factor_of_bitw_with_constant(NodeType? expType = null)
         {
             var factor = null;
             var node = null;
             if (this.__is_bitwise_binop())
             {
-                if ((expType != null && this.type != expType))
+                if ((((expType) != (null)) && ((this.type) != (expType))))
                 {
                     return (null, null);
                 }
                 factor = 1;
-                node = self;
+                node = this;
             }
             else
             {
-                if (this.type != NodeType.PRODUCT)
+                if ((this.type) != (NodeType.PRODUCT))
                 {
                     return (null, null);
                 }
                 else
                 {
-                    if (this.children.Count() != 2)
+                    if ((this.children.Count()) != (2))
                     {
                         return (null, null);
                     }
                     else
                     {
-                        if (this.children[0].type != NodeType.CONSTANT)
+                        if ((this.children[0].type) != (NodeType.CONSTANT))
                         {
                             return (null, null);
                         }
@@ -6654,7 +6806,7 @@ namespace Gamba.Prototyping.Transpiled
                             }
                             else
                             {
-                                if ((expType != null && this.children[1].type != expType))
+                                if ((((expType) != (null)) && ((this.children[1].type) != (expType))))
                                 {
                                     return (null, null);
                                 }
@@ -6668,26 +6820,26 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (node.children[0].type != NodeType.CONSTANT)
+            if ((node.children[0].type) != (NodeType.CONSTANT))
             {
                 return (null, null);
             }
             return (factor, node);
         }
 
-        public dynamic __check_bitw_pairs_with_constants()
+        public bool __check_bitw_pairs_with_constants()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var changed = false;
-            foreach (var conj in new List<dynamic>() { true, false })
+            foreach (var conj in new() { true, false })
             {
                 if (this.__check_bitw_pairs_with_constants_impl(conj))
                 {
                     changed = true;
-                    if (this.type != NodeType.SUM)
+                    if ((this.type) != (NodeType.SUM))
                     {
                         return true;
                     }
@@ -6696,42 +6848,42 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public bool __check_bitw_pairs_with_constants_impl(dynamic conj)
+        public bool __check_bitw_pairs_with_constants_impl(bool conj)
         {
-            Assert.True(this.type == NodeType.SUM);
+            Assert.True((this.type) == (NodeType.SUM));
             var expType = (conj) ? NodeType.CONJUNCTION : NodeType.INCL_DISJUNCTION;
             var l = this.__collect_indices_of_bitw_with_constants_in_sum(expType);
-            if (l.Count() == 0)
+            if ((l.Count()) == (0))
             {
                 return false;
             }
-            var toRemove = new List<dynamic>() { };
+            List<Node> toRemove = new() { };
             var changed = false;
             foreach (var pair in l)
             {
                 var factor = pair[0];
                 var sublist = pair[1];
-                foreach (var i in range(sublist.Count() - 1, 0, -(1)))
+                foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
-                    foreach (var j in range(0, i))
+                    foreach (var j in Range.Get(0, i))
                     {
                         var firstIdx = sublist[j];
                         var first = this.children[firstIdx];
-                        if (first.type == NodeType.PRODUCT)
+                        if ((first.type) == (NodeType.PRODUCT))
                         {
                             first = first.children[1];
                         }
-                        Assert.True(first.type == expType);
+                        Assert.True((first.type) == (expType));
                         var secIdx = sublist[i];
                         var second = this.children[secIdx];
-                        if (second.type == NodeType.PRODUCT)
+                        if ((second.type) == (NodeType.PRODUCT))
                         {
                             second = second.children[1];
                         }
-                        Assert.True(second.type == expType);
-                        var firstConst = first.children[0].constant % this.__modulus;
-                        var secConst = second.children[0].constant % this.__modulus;
-                        if (firstConst & secConst != 0)
+                        Assert.True((second.type) == (expType));
+                        var firstConst = ((first.children[0].constant) % (this.__modulus));
+                        var secConst = ((second.children[0].constant) % (this.__modulus));
+                        if ((((firstConst) & (secConst))) != (0))
                         {
                             continue;
                         }
@@ -6749,12 +6901,12 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            toRemove.sort();
-            foreach (var idx in reversed(toRemove))
+            toRemove.Sort();
+            foreach (var idx in ListUtil.Reversed(toRemove))
             {
                 this.children.RemoveAt(idx);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -6763,53 +6915,53 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_diff_bitw_pairs_with_constants()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var l = this.__collect_all_indices_of_bitw_with_constants();
-            if (l.Count() == 0)
+            if ((l.Count()) == (0))
             {
                 return false;
             }
-            var toRemove = new List<dynamic>() { };
-            var const = 0;
+            List<int> toRemove = new() { };
+            long _const = 0;
             var changed = false;
             foreach (var sublist in l)
             {
-                foreach (var i in range(sublist.Count() - 1, 0, -(1)))
+                foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
-                    foreach (var j in range(0, i))
+                    foreach (var j in Range.Get(0, i))
                     {
                         var (firstFactor, firstIdx) = sublist[j];
                         var first = this.children[firstIdx];
-                        if (first.type == NodeType.PRODUCT)
+                        if ((first.type) == (NodeType.PRODUCT))
                         {
                             first = first.children[1];
                         }
                         var (secFactor, secIdx) = sublist[i];
                         var second = this.children[secIdx];
-                        if (second.type == NodeType.PRODUCT)
+                        if ((second.type) == (NodeType.PRODUCT))
                         {
                             second = second.children[1];
                         }
-                        if (first.type == second.type)
+                        if ((first.type) == (second.type))
                         {
                             continue;
                         }
-                        var firstConst = first.children[0].constant % this.__modulus;
-                        var secConst = second.children[0].constant % this.__modulus;
-                        if (firstConst & secConst != 0)
+                        var firstConst = ((first.children[0].constant) % (this.__modulus));
+                        var secConst = ((second.children[0].constant) % (this.__modulus));
+                        if ((((firstConst) & (secConst))) != (0))
                         {
                             continue;
                         }
                         var factor = this.__get_factor_for_merging_bitwise(firstFactor, secFactor, first.type, second.type);
-                        if (factor == null)
+                        if ((factor) == (null))
                         {
                             continue;
                         }
                         var (bitwFactor, remove, add) = this.__merge_bitwise_terms(firstIdx, secIdx, first, second, factor, firstConst, secConst);
-                        const += add;
+                        _const += add;
                         if (remove)
                         {
                             toRemove.Add(secIdx);
@@ -6824,39 +6976,39 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            toRemove.sort();
-            foreach (var idx in reversed(toRemove))
+            toRemove.Sort();
+            foreach (var idx in ListUtil.Reversed(toRemove))
             {
                 this.children.RemoveAt(idx);
             }
-            if (this.children[0].type == NodeType.CONSTANT)
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
-                this.children[0].__set_and_reduce_constant(this.children[0].constant + const);
+                this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (_const)));
             }
             else
             {
-                this.children.Insert(0, this.__new_constant_node(const));
+                this.children.Insert(0, this.__new_constant_node(_const));
             }
-            if ((this.children.Count() > 1 && this.children[0].__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (this.children[0].__is_constant(0))))
             {
                 this.children.RemoveAt(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return true;
         }
 
-        public dynamic __collect_all_indices_of_bitw_with_constants()
+        public List<List<int>> __collect_all_indices_of_bitw_with_constants()
         {
-            Assert.True(this.type == NodeType.SUM);
-            var l = new List<dynamic>() { };
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.SUM));
+            var l = new() { };
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_with_constant();
-                Assert.True(factor == null == node == null);
-                if (factor == null)
+                Assert.True(((factor) == (null)) == ((node) == (null)));
+                if ((factor) == (null))
                 {
                     continue;
                 }
@@ -6866,13 +7018,13 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     var firstIdx = sublist[0];
                     var first = this.children[firstIdx[1]];
-                    if (first.type == NodeType.PRODUCT)
+                    if ((first.type) == (NodeType.PRODUCT))
                     {
                         first = first.children[1];
                     }
-                    if (node.children.Count() == 2)
+                    if ((node.children.Count()) == (2))
                     {
-                        if (first.children.Count() == 2)
+                        if ((first.children.Count()) == (2))
                         {
                             if (!(node.children[1].Equals(first.children[1])))
                             {
@@ -6881,11 +7033,11 @@ namespace Gamba.Prototyping.Transpiled
                         }
                         else
                         {
-                            if (node.children[1].type != first.type)
+                            if ((node.children[1].type) != (first.type))
                             {
                                 continue;
                             }
-                            Assert.True(first.children.Count() > 2);
+                            Assert.True((first.children.Count()) > (2));
                             if (!(do_children_match(node.children[1].children, first.children.Slice(1, null, null))))
                             {
                                 continue;
@@ -6894,13 +7046,13 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     else
                     {
-                        if (first.children.Count() == 2)
+                        if ((first.children.Count()) == (2))
                         {
-                            if (first.children[1].type != node.type)
+                            if ((first.children[1].type) != (node.type))
                             {
                                 continue;
                             }
-                            Assert.True(node.children.Count() > 2);
+                            Assert.True((node.children.Count()) > (2));
                             if (!(do_children_match(first.children[1].children, node.children.Slice(1, null, null))))
                             {
                                 continue;
@@ -6914,87 +7066,87 @@ namespace Gamba.Prototyping.Transpiled
                             }
                         }
                     }
-                    sublist.Add(new List<dynamic>() { factor, i });
+                    sublist.Add(new() { factor, i });
                     found = true;
                     break;
                 }
                 if (!(found))
                 {
-                    l.Add(new List<dynamic>() { new List<dynamic>() { factor, i } });
+                    l.Add(new() { new() { factor, i } });
                 }
             }
             return l;
         }
 
-        public dynamic __get_factor_for_merging_bitwise(dynamic fac1, dynamic fac2, dynamic type1, dynamic type2)
+        public NullableI64 __get_factor_for_merging_bitwise(long fac1, long fac2, NodeType type1, NodeType type2)
         {
-            if (type1 == type2)
+            if ((type1) == (type2))
             {
-                if (fac1 - fac2 % this.__modulus != 0)
+                if ((((((fac1) - (fac2))) % (this.__modulus))) != (0))
                 {
                     return null;
                 }
                 return fac1;
             }
-            if (type1 == NodeType.EXCL_DISJUNCTION)
+            if ((type1) == (NodeType.EXCL_DISJUNCTION))
             {
-                if (type2 == NodeType.CONJUNCTION)
+                if ((type2) == (NodeType.CONJUNCTION))
                 {
-                    if (2 * fac1 + fac2 % this.__modulus != 0)
+                    if ((((((((2) * (fac1))) + (fac2))) % (this.__modulus))) != (0))
                     {
                         return null;
                     }
                 }
                 else
                 {
-                    if (2 * fac1 - fac2 % this.__modulus != 0)
+                    if ((((((((2) * (fac1))) - (fac2))) % (this.__modulus))) != (0))
                     {
                         return null;
                     }
                 }
                 return fac1;
             }
-            if (type1 == NodeType.CONJUNCTION)
+            if ((type1) == (NodeType.CONJUNCTION))
             {
-                if (type2 == NodeType.EXCL_DISJUNCTION)
+                if ((type2) == (NodeType.EXCL_DISJUNCTION))
                 {
-                    if (fac1 + 2 * fac2 % this.__modulus != 0)
+                    if ((((((fac1) + (((2) * (fac2))))) % (this.__modulus))) != (0))
                     {
                         return null;
                     }
                 }
                 else
                 {
-                    if (fac1 + fac2 % this.__modulus != 0)
+                    if ((((((fac1) + (fac2))) % (this.__modulus))) != (0))
                     {
                         return null;
                     }
                 }
                 return fac2;
             }
-            if (type2 == NodeType.EXCL_DISJUNCTION)
+            if ((type2) == (NodeType.EXCL_DISJUNCTION))
             {
-                if (-(fac1) + 2 * fac2 % this.__modulus != 0)
+                if ((((((-(fac1)) + (((2) * (fac2))))) % (this.__modulus))) != (0))
                 {
                     return null;
                 }
                 return fac2;
             }
-            if (fac1 + fac2 % this.__modulus != 0)
+            if ((((((fac1) + (fac2))) % (this.__modulus))) != (0))
             {
                 return null;
             }
             return fac1;
         }
 
-        public dynamic __merge_bitwise_terms(dynamic firstIdx, dynamic secIdx, dynamic first, dynamic second, dynamic factor, dynamic firstConst, dynamic secConst)
+        public (i64, bool, i64) __merge_bitwise_terms(int firstIdx, int secIdx, Node first, Node second, long factor, long firstConst, long secConst)
         {
             var (bitwFactor, add, opfac) = this.__merge_bitwise_terms_and_get_opfactor(firstIdx, secIdx, first, second, factor, firstConst, secConst);
-            if (opfac == 0)
+            if ((opfac) == (0))
             {
                 return (bitwFactor, true, add);
             }
-            if (second.children.Count() == 2)
+            if ((second.children.Count()) == (2))
             {
                 this.children[secIdx] = second.children[1];
             }
@@ -7003,24 +7155,24 @@ namespace Gamba.Prototyping.Transpiled
                 this.children[secIdx] = second.__get_shallow_copy();
                 this.children[secIdx].children.RemoveAt(0);
             }
-            if (opfac != 1)
+            if ((opfac) != (1))
             {
                 this.children[secIdx].__multiply(opfac);
             }
             return (bitwFactor, false, add);
         }
 
-        public dynamic __merge_bitwise_terms_and_get_opfactor(dynamic firstIdx, dynamic secIdx, dynamic first, dynamic second, dynamic factor, dynamic firstConst, dynamic secConst)
+        public (long, long, long) __merge_bitwise_terms_and_get_opfactor(int firstIdx, int secIdx, Node first, Node second, long factor, long firstConst, long secConst)
         {
-            var constSum = firstConst + secConst;
-            var constNeg = -(constSum) - 1;
+            var constSum = ((firstConst) + (secConst));
+            var constNeg = ((-(constSum)) - (1));
             var bitwFactor = this.__get_bitwise_factor_for_merging_bitwise(factor, first.type, second.type);
             var (opfac, add) = this.__get_operand_factor_and_constant_for_merging_bitwise(factor, first.type, second.type, firstConst, secConst);
-            var hasFactor = this.children[firstIdx].type == NodeType.PRODUCT;
+            var hasFactor = (this.children[firstIdx].type) == (NodeType.PRODUCT);
             first.children[0].__set_and_reduce_constant(this.__get_const_operand_for_merging_bitwise(constSum, first.type, second.type));
-            if ((first.type != second.type || first.type != NodeType.INCL_DISJUNCTION))
+            if ((((first.type) != (second.type)) || ((first.type) != (NodeType.INCL_DISJUNCTION))))
             {
-                if ((first.type != NodeType.CONJUNCTION && first.children.Count() > 2))
+                if ((((first.type) != (NodeType.CONJUNCTION)) && ((first.children.Count()) > (2))))
                 {
                     var node = this.__new_node(first.type);
                     node.children.Add(first.children[0].__get_shallow_copy());
@@ -7032,7 +7184,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             if (hasFactor)
             {
-                if (bitwFactor == 1)
+                if ((bitwFactor) == (1))
                 {
                     this.children[firstIdx] = first;
                 }
@@ -7043,94 +7195,94 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                if (bitwFactor != 1)
+                if ((bitwFactor) != (1))
                 {
                     var factorNode = this.__new_constant_node(bitwFactor);
-                    var prod = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { factorNode, first.__get_shallow_copy() });
+                    var prod = this.__new_node_with_children(NodeType.PRODUCT, new() { factorNode, first.__get_shallow_copy() });
                     this.children[firstIdx].copy(prod);
                 }
             }
             return (bitwFactor, add, opfac);
         }
 
-        public dynamic __get_const_operand_for_merging_bitwise(dynamic constSum, dynamic type1, dynamic type2)
+        public long __get_const_operand_for_merging_bitwise(long constSum, NodeType type1, NodeType type2)
         {
-            if ((type1 == type2 && type1 != NodeType.EXCL_DISJUNCTION))
+            if ((((type1) == (type2)) && ((type1) != (NodeType.EXCL_DISJUNCTION))))
             {
                 return constSum;
             }
-            return -(constSum) - 1;
+            return ((-(constSum)) - (1));
         }
 
-        public dynamic __get_bitwise_factor_for_merging_bitwise(dynamic factor, dynamic type1, dynamic type2)
+        public long __get_bitwise_factor_for_merging_bitwise(long factor, NodeType type1, NodeType type2)
         {
-            if ((type1 == NodeType.EXCL_DISJUNCTION || type2 == NodeType.EXCL_DISJUNCTION))
+            if ((((type1) == (NodeType.EXCL_DISJUNCTION)) || ((type2) == (NodeType.EXCL_DISJUNCTION))))
             {
-                return 2 * factor;
+                return ((2) * (factor));
             }
             return factor;
         }
 
-        public dynamic __get_operand_factor_and_constant_for_merging_bitwise(dynamic factor, dynamic type1, dynamic type2, dynamic const1, dynamic const2)
+        public (long, long) __get_operand_factor_and_constant_for_merging_bitwise(long factor, NodeType type1, NodeType type2, long const1, long const2)
         {
-            if (type1 == type2)
+            if ((type1) == (type2))
             {
-                if (type1 == NodeType.CONJUNCTION)
+                if ((type1) == (NodeType.CONJUNCTION))
                 {
                     return (0, 0);
                 }
-                if (type1 == NodeType.INCL_DISJUNCTION)
+                if ((type1) == (NodeType.INCL_DISJUNCTION))
                 {
                     return (factor, 0);
                 }
-                return (0, const1 + const2 * factor);
+                return (0, ((((const1) + (const2))) * (factor)));
             }
-            if (type1 == NodeType.EXCL_DISJUNCTION)
+            if ((type1) == (NodeType.EXCL_DISJUNCTION))
             {
-                if (type2 == NodeType.CONJUNCTION)
+                if ((type2) == (NodeType.CONJUNCTION))
                 {
-                    return (-(factor), const1 * factor);
+                    return (-(factor), ((const1) * (factor)));
                 }
-                return (factor, const1 + 2 * const2 * factor);
+                return (factor, ((((const1) + (((2) * (const2))))) * (factor)));
             }
-            if (type1 == NodeType.CONJUNCTION)
+            if ((type1) == (NodeType.CONJUNCTION))
             {
-                if (type2 == NodeType.EXCL_DISJUNCTION)
+                if ((type2) == (NodeType.EXCL_DISJUNCTION))
                 {
-                    return (-(factor), const2 * factor);
+                    return (-(factor), ((const2) * (factor)));
                 }
-                return (0, const2 * factor);
+                return (0, ((const2) * (factor)));
             }
-            if (type2 == NodeType.EXCL_DISJUNCTION)
+            if ((type2) == (NodeType.EXCL_DISJUNCTION))
             {
-                return (factor, 2 * const1 + const2 * factor);
+                return (factor, ((((((2) * (const1))) + (const2))) * (factor)));
             }
-            return (0, const1 * factor);
+            return (0, ((const1) * (factor)));
         }
 
         public bool __check_bitw_tuples_with_constants()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var l = this.__collect_all_indices_of_bitw_with_constants();
-            if (l.Count() == 0)
+            if ((l.Count()) == (0))
             {
                 return false;
             }
-            var toRemove = new List<dynamic>() { };
-            var const = 0;
+            List<int> toRemove = new() { };
+            long _const = 0;
             var changed = false;
             foreach (var sublist in l)
             {
-                foreach (var i in range(sublist.Count() - 1, 1, -(1)))
+                foreach (var i in Range.Get(((sublist.Count()) - (1)), 1, -(1)))
                 {
                     var add = this.__try_merge_bitwise_with_constants_with_2_others(sublist, i, toRemove);
-                    if (add != null)
+                    if ((add) != (null))
                     {
                         changed = true;
-                        const += add;
+                        _const += add;
                     }
                 }
             }
@@ -7138,38 +7290,38 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            toRemove.sort();
-            foreach (var idx in reversed(toRemove))
+            toRemove.Sort();
+            foreach (var idx in ListUtil.Reversed(toRemove))
             {
                 this.children.RemoveAt(idx);
             }
-            if (this.children[0].type == NodeType.CONSTANT)
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
-                this.children[0].__set_and_reduce_constant(this.children[0].constant + const);
+                this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (_const)));
             }
             else
             {
-                this.children.Insert(0, this.__new_constant_node(const));
+                this.children.Insert(0, this.__new_constant_node(_const));
             }
-            if ((this.children.Count() > 1 && this.children[0].__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (this.children[0].__is_constant(0))))
             {
                 this.children.RemoveAt(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return true;
         }
 
-        public void __try_merge_bitwise_with_constants_with_2_others(dynamic sublist, dynamic i, dynamic toRemove)
+        public NullableI64 __try_merge_bitwise_with_constants_with_2_others(List<List<int>> sublist, int i, List<int> toRemove)
         {
-            foreach (var j in range(1, i))
+            foreach (var j in Range.Get(1, i))
             {
-                foreach (var k in range(0, j))
+                foreach (var k in Range.Get(0, j))
                 {
                     var add = this.__try_merge_triple_bitwise_with_constants(sublist, i, j, k, toRemove);
-                    if (add != null)
+                    if ((add) != (null))
                     {
                         return add;
                     }
@@ -7178,155 +7330,157 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public void __try_merge_triple_bitwise_with_constants(dynamic sublist, dynamic i, dynamic j, dynamic k, dynamic toRemove)
+        public NullableI64 __try_merge_triple_bitwise_with_constants(List<List<int>> sublist, int i, int j, int k, List<int> toRemove)
         {
-            foreach (var perm in new List<dynamic>() { new List<dynamic>() { i, j, k }, new List<dynamic>() { j, i, k }, new List<dynamic>() { k, i, j } })
+            List<List<int>> perms = new() { new() { i, j, k }, new() { j, i, k }, new() { k, i, j } };
+            foreach (var perm in perms)
             {
                 var (mainFactor, mainIdx) = sublist[perm[0]];
                 var main = this.children[mainIdx];
-                if (main.type == NodeType.PRODUCT)
+                if ((main.type) == (NodeType.PRODUCT))
                 {
                     main = main.children[1];
                 }
-                var mainConst = main.children[0].constant % this.__modulus;
+                var mainConst = ((main.children[0].constant) % (this.__modulus));
                 var (firstFactor, firstIdx) = sublist[perm[1]];
                 var first = this.children[firstIdx];
-                if (first.type == NodeType.PRODUCT)
+                if ((first.type) == (NodeType.PRODUCT))
                 {
                     first = first.children[1];
                 }
-                var firstConst = first.children[0].constant % this.__modulus;
+                var firstConst = ((first.children[0].constant) % (this.__modulus));
                 var (secFactor, secIdx) = sublist[perm[2]];
                 var second = this.children[secIdx];
-                if (second.type == NodeType.PRODUCT)
+                if ((second.type) == (NodeType.PRODUCT))
                 {
                     second = second.children[1];
                 }
-                var secConst = second.children[0].constant % this.__modulus;
+                var secConst = ((second.children[0].constant) % (this.__modulus));
                 var (factor1, factor2) = this.__get_factors_for_merging_triple(first.type, second.type, main.type, firstFactor, secFactor, mainFactor, firstConst, secConst, mainConst);
-                Assert.True(factor1 == null == factor2 == null);
-                if (factor1 == null)
+                Assert.True(((factor1) == (null)) == ((factor2) == (null)));
+                if ((factor1) == (null))
                 {
                     continue;
                 }
                 var i1 = perm[1];
-                if (perm[0] != i)
+                if ((perm[0]) != (i))
                 {
-                    Assert.True(perm[1] == i);
+                    Assert.True((perm[1]) == (i));
                     var(sublist[perm[0]], sublist[perm[1]]) = (sublist[perm[1]], sublist[perm[0]]);
                     i1 = perm[0];
                 }
                 var (bitwFactor1, add1, opfac1) = this.__merge_bitwise_terms_and_get_opfactor(firstIdx, mainIdx, first, main, factor1, firstConst, mainConst);
                 var (bitwFactor2, add2, opfac2) = this.__merge_bitwise_terms_and_get_opfactor(secIdx, mainIdx, second, main, factor2, secConst, mainConst);
-                var opfac = opfac1 + opfac2 % this.__modulus;
-                if (opfac == null)
+                var opfac = ((((opfac1) + (opfac2))) % (this.__modulus));
+                if ((opfac) == (null))
                 {
                     toRemove.Add(mainIdx);
                 }
                 else
                 {
                     this.children[mainIdx] = main.children[1];
-                    if (opfac != 1)
+                    if ((opfac) != (1))
                     {
                         this.children[mainIdx].__multiply(opfac);
                     }
                 }
                 sublist[i1][0] = bitwFactor1;
                 sublist[perm[2]][0] = bitwFactor2;
-                return add1 + add2;
+                return ((add1) + (add2));
             }
             return null;
         }
 
-        public dynamic __get_factors_for_merging_triple(dynamic type1, dynamic type2, dynamic type0, dynamic fac1, dynamic fac2, dynamic fac0, dynamic const1, dynamic const2, dynamic const0)
+        public (NullableI64, NullableI64) __get_factors_for_merging_triple(NodeType type1, NodeType type2, NodeType type0, long fac1, long fac2, long fac0, long const1, long const2, long const0)
         {
-            if (const1 & const0 != 0)
+            if ((((const1) & (const0))) != (0))
             {
                 return (null, null);
             }
-            if (const2 & const0 != 0)
+            if ((((const2) & (const0))) != (0))
             {
                 return (null, null);
             }
             var factor1 = this.__get_possible_factor_for_merging_bitwise(fac1, type1, type0);
-            if (factor1 == null)
+            if ((factor1) == (null))
             {
                 return (null, null);
             }
             var factor2 = this.__get_possible_factor_for_merging_bitwise(fac2, type2, type0);
-            if (factor2 == null)
+            if ((factor2) == (null))
             {
                 return (null, null);
             }
-            if (factor1 + factor2 - fac0 % this.__modulus != 0)
+            if ((((((((factor1) + (factor2))) - (fac0))) % (this.__modulus))) != (0))
             {
                 return (null, null);
             }
             factor1 = this.__get_factor_for_merging_bitwise(fac1, factor1, type1, type0);
             factor2 = this.__get_factor_for_merging_bitwise(fac2, factor2, type2, type0);
-            Assert.True(factor1 != null);
-            Assert.True(factor2 != null);
+            Assert.True((factor1) != (null));
+            Assert.True((factor2) != (null));
             return (factor1, factor2);
         }
 
-        public dynamic __get_possible_factor_for_merging_bitwise(dynamic fac1, dynamic type1, dynamic type0)
+        public NullableI64 __get_possible_factor_for_merging_bitwise(long fac1, NodeType type1, NodeType type0)
         {
-            if (type1 == NodeType.EXCL_DISJUNCTION)
+            if ((type1) == (NodeType.EXCL_DISJUNCTION))
             {
-                if (type0 == NodeType.CONJUNCTION)
+                if ((type0) == (NodeType.CONJUNCTION))
                 {
-                    return -(2) * fac1;
+                    return ((-(2)) * (fac1));
                 }
-                if (type0 == NodeType.INCL_DISJUNCTION)
+                if ((type0) == (NodeType.INCL_DISJUNCTION))
                 {
-                    return 2 * fac1;
+                    return ((2) * (fac1));
                 }
                 return fac1;
             }
-            if (type1 == NodeType.CONJUNCTION)
+            if ((type1) == (NodeType.CONJUNCTION))
             {
-                if (type0 == NodeType.EXCL_DISJUNCTION)
+                if ((type0) == (NodeType.EXCL_DISJUNCTION))
                 {
-                    if (fac1 % 2 != 0)
+                    if ((((fac1) % (2))) != (0))
                     {
                         return null;
                     }
-                    return -(fac1) / 2;
+                    return ((-(fac1)) / (2));
                 }
-                if (type0 == NodeType.CONJUNCTION)
+                if ((type0) == (NodeType.CONJUNCTION))
                 {
                     return fac1;
                 }
                 return -(fac1);
             }
-            if (type0 == NodeType.EXCL_DISJUNCTION)
+            if ((type0) == (NodeType.EXCL_DISJUNCTION))
             {
-                if (fac1 % 2 != 0)
+                if ((((fac1) % (2))) != (0))
                 {
                     return null;
                 }
-                return fac1 / 2;
+                return ((fac1) / (2));
             }
-            if (type0 == NodeType.CONJUNCTION)
+            if ((type0) == (NodeType.CONJUNCTION))
             {
                 return -(fac1);
             }
             return fac1;
         }
 
-        public dynamic __check_bitw_pairs_with_inverses()
+        public bool __check_bitw_pairs_with_inverses()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var changed = false;
-            foreach (var expType in new List<dynamic>() { NodeType.CONJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.INCL_DISJUNCTION })
+            List<NodeType> expTypes = new() { NodeType.CONJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.INCL_DISJUNCTION };
+            foreach (var expType in expTypes)
             {
                 if (this.__check_bitw_pairs_with_inverses_impl(expType))
                 {
                     changed = true;
-                    if (this.type != NodeType.SUM)
+                    if ((this.type) != (NodeType.SUM))
                     {
                         return true;
                     }
@@ -7335,29 +7489,29 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public bool __check_bitw_pairs_with_inverses_impl(dynamic expType)
+        public bool __check_bitw_pairs_with_inverses_impl(NodeType expType)
         {
-            Assert.True(this.type == NodeType.SUM);
+            Assert.True((this.type) == (NodeType.SUM));
             var l = this.__collect_indices_of_bitw_without_constants_in_sum(expType);
-            if (l.Count() == 0)
+            if ((l.Count()) == (0))
             {
                 return false;
             }
-            var toRemove = new List<dynamic>() { };
+            List<int> toRemove = new() { };
             var changed = false;
-            var const = 0;
+            long _const = 0;
             foreach (var pair in l)
             {
                 var factor = pair[0];
                 var sublist = pair[2];
                 var done = sublist.Where(x => ).Select(x => false);
-                foreach (var i in range(sublist.Count() - 1, 0, -(1)))
+                foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
                     if (done[i])
                     {
                         continue;
                     }
-                    foreach (var j in range(0, i))
+                    foreach (var j in Range.Get(0, i))
                     {
                         if (done[j])
                         {
@@ -7365,20 +7519,20 @@ namespace Gamba.Prototyping.Transpiled
                         }
                         var firstIdx = sublist[j];
                         var first = this.children[firstIdx];
-                        if (first.type == NodeType.PRODUCT)
+                        if ((first.type) == (NodeType.PRODUCT))
                         {
                             first = first.children[1];
                         }
-                        Assert.True(first.type == expType);
+                        Assert.True((first.type) == (expType));
                         var secIdx = sublist[i];
                         var second = this.children[secIdx];
-                        if (second.type == NodeType.PRODUCT)
+                        if ((second.type) == (NodeType.PRODUCT))
                         {
                             second = second.children[1];
                         }
-                        Assert.True(second.type == expType);
+                        Assert.True((second.type) == (expType));
                         var indices = first.__get_only_differing_child_indices(second);
-                        if (indices == null)
+                        if ((indices) == (null))
                         {
                             continue;
                         }
@@ -7387,7 +7541,7 @@ namespace Gamba.Prototyping.Transpiled
                             continue;
                         }
                         var (removeFirst, removeSec, add) = this.__merge_inverse_bitwise_terms(firstIdx, secIdx, first, second, factor, indices);
-                        const += add;
+                        _const += add;
                         if (removeFirst)
                         {
                             toRemove.Add(firstIdx);
@@ -7406,47 +7560,47 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            if (toRemove.Count() > 0)
+            if ((toRemove.Count()) > (0))
             {
-                toRemove.sort();
-                foreach (var idx in reversed(toRemove))
+                toRemove.Sort();
+                foreach (var idx in ListUtil.Reversed(toRemove))
                 {
                     this.children.RemoveAt(idx);
                 }
             }
-            if (this.children.Count() == 0)
+            if ((this.children.Count()) == (0))
             {
-                this.copy(this.__new_constant_node(const));
+                this.copy(this.__new_constant_node(_const));
                 return true;
             }
-            if (this.children[0].type == NodeType.CONSTANT)
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
-                this.children[0].__set_and_reduce_constant(this.children[0].constant + const);
+                this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (_const)));
             }
             else
             {
-                this.children.Insert(0, this.__new_constant_node(const));
+                this.children.Insert(0, this.__new_constant_node(_const));
             }
-            if ((this.children.Count() > 1 && this.children[0].__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (this.children[0].__is_constant(0))))
             {
                 this.children.RemoveAt(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return true;
         }
 
-        public dynamic __collect_indices_of_bitw_without_constants_in_sum(dynamic expType)
+        public List<object> __collect_indices_of_bitw_without_constants_in_sum(NodeType expType)
         {
-            Assert.True(this.type == NodeType.SUM);
-            var l = new List<dynamic>() { };
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.SUM));
+            var l = new() { };
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_without_constant(expType);
-                Assert.True(factor == null == node == null);
-                if (factor == null)
+                Assert.True(((factor) == (null)) == ((node) == (null)));
+                if ((factor) == (null))
                 {
                     continue;
                 }
@@ -7454,11 +7608,11 @@ namespace Gamba.Prototyping.Transpiled
                 var found = false;
                 foreach (var triple in l)
                 {
-                    if (factor != triple[0])
+                    if ((factor) != (triple[0]))
                     {
                         continue;
                     }
-                    if (opCnt != triple[1])
+                    if ((opCnt) != (triple[1]))
                     {
                         continue;
                     }
@@ -7468,40 +7622,40 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if (!(found))
                 {
-                    l.Add(new List<dynamic>() { factor, opCnt, new List<dynamic>() { i } });
+                    l.Add(new() { factor, opCnt, new() { i } });
                 }
             }
             return l;
         }
 
-        public dynamic __get_factor_of_bitw_without_constant(void expType = null)
+        public (NullableI64, Node) __get_factor_of_bitw_without_constant(NodeType? expType = null)
         {
-            var factor = null;
-            var node = null;
+            NullableI64 factor = null;
+            Node node = null;
             if (this.__is_bitwise_binop())
             {
-                if ((expType != null && this.type != expType))
+                if ((((expType) != (null)) && ((this.type) != (expType))))
                 {
                     return (null, null);
                 }
                 factor = 1;
-                node = self;
+                node = this;
             }
             else
             {
-                if (this.type != NodeType.PRODUCT)
+                if ((this.type) != (NodeType.PRODUCT))
                 {
                     return (null, null);
                 }
                 else
                 {
-                    if (this.children.Count() != 2)
+                    if ((this.children.Count()) != (2))
                     {
                         return (null, null);
                     }
                     else
                     {
-                        if (this.children[0].type != NodeType.CONSTANT)
+                        if ((this.children[0].type) != (NodeType.CONSTANT))
                         {
                             return (null, null);
                         }
@@ -7513,7 +7667,7 @@ namespace Gamba.Prototyping.Transpiled
                             }
                             else
                             {
-                                if ((expType != null && this.children[1].type != expType))
+                                if ((((expType) != (null)) && ((this.children[1].type) != (expType))))
                                 {
                                     return (null, null);
                                 }
@@ -7527,58 +7681,58 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (node.children[0].type == NodeType.CONSTANT)
+            if ((node.children[0].type) == (NodeType.CONSTANT))
             {
                 return (null, null);
             }
             return (factor, node);
         }
 
-        public dynamic __get_only_differing_child_indices(dynamic other)
+        public (int, int)? __get_only_differing_child_indices(Node other)
         {
-            if (this.type == other.type)
+            if ((this.type) == (other.type))
             {
-                if (this.children.Count() != other.children.Count())
+                if ((this.children.Count()) != (other.children.Count()))
                 {
                     return null;
                 }
                 return this.__get_only_differing_child_indices_same_len(other);
             }
-            if (this.children.Count() == other.children.Count())
+            if ((this.children.Count()) == (other.children.Count()))
             {
-                if (this.children.Count() != 2)
+                if ((this.children.Count()) != (2))
                 {
                     return null;
                 }
                 return this.__get_only_differing_child_indices_same_len(other);
             }
-            if (this.children.Count() < other.children.Count())
+            if ((this.children.Count()) < (other.children.Count()))
             {
-                if (this.children.Count() != 2)
+                if ((this.children.Count()) != (2))
                 {
                     return null;
                 }
                 return this.__get_only_differing_child_indices_diff_len(other);
             }
-            if (other.children.Count() != 2)
+            if ((other.children.Count()) != (2))
             {
                 return null;
             }
-            var indices = other.__get_only_differing_child_indices_diff_len(self);
-            if (indices == null)
+            var indices = other.__get_only_differing_child_indices_diff_len(this);
+            if ((indices) == (null))
             {
                 return null;
             }
             return (indices[1], indices[0]);
         }
 
-        public dynamic __get_only_differing_child_indices_same_len(dynamic other)
+        public (int, int)? __get_only_differing_child_indices_same_len(Node other)
         {
-            Assert.True((this.type == other.type || this.children.Count() == 2));
-            Assert.True(this.children.Count() == other.children.Count());
-            var idx1 = null;
-            var oIndices = list(range(other.children.Count()));
-            foreach (var i in range(this.children.Count()))
+            Assert.True((((this.type) == (other.type)) || ((this.children.Count()) == (2))));
+            Assert.True((this.children.Count()) == (other.children.Count()));
+            NullableI32 idx1 = null;
+            List<int> oIndices = new(Range.Get(other.children.Count()));
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
                 var found = false;
@@ -7586,13 +7740,13 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     if (child.Equals(other.children[j]))
                     {
-                        oIndices.remove(j);
+                        oIndices.Remove(j);
                         found = true;
                     }
                 }
                 if (!(found))
                 {
-                    if (idx1 == null)
+                    if ((idx1) == (null))
                     {
                         idx1 = i;
                     }
@@ -7602,32 +7756,33 @@ namespace Gamba.Prototyping.Transpiled
                     }
                 }
             }
-            if (idx1 == null)
+            if ((idx1) == (null))
             {
                 return null;
             }
-            Assert.True(oIndices.Count() == 1);
+            Assert.True((oIndices.Count()) == (1));
             return (idx1, oIndices[0]);
         }
 
-        public void __get_only_differing_child_indices_diff_len(dynamic other)
+        public (int, int)? __get_only_differing_child_indices_diff_len(Node other)
         {
-            Assert.True(this.type != other.type);
-            Assert.True(this.children.Count() == 2);
-            Assert.True(other.children.Count() > 2);
-            foreach (var i in new List<dynamic>() { 0, 1 })
+            Assert.True((this.type) != (other.type));
+            Assert.True((this.children.Count()) == (2));
+            Assert.True((other.children.Count()) > (2));
+            List<int> nums = new() { 0, 1 };
+            foreach (var i in nums)
             {
                 var idx = other.__get_index_of_child_negated(this.children[i]);
-                if (idx == null)
+                if ((idx) == (null))
                 {
                     continue;
                 }
-                var oi = (i == 0) ? 1 : 0;
-                if (this.children[oi].type != other.type)
+                var oi = ((i) == (0)) ? 1 : 0;
+                if ((this.children[oi].type) != (other.type))
                 {
                     continue;
                 }
-                if (!(do_children_match(this.children[oi].children, other.children.Slice(null, idx, null) + other.children.Slice(idx + 1, null, null))))
+                if (!(do_children_match(this.children[oi].children, ((other.children.Slice(null, idx, null)) + (other.children.Slice(((idx) + (1)), null, null))))))
                 {
                     continue;
                 }
@@ -7636,19 +7791,23 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic __merge_inverse_bitwise_terms(dynamic firstIdx, dynamic secIdx, dynamic first, dynamic second, dynamic factor, dynamic indices)
+        public (bool, bool, (long, long, long)) __merge_inverse_bitwise_terms(int firstIdx, int secIdx, Node first, Node second, long factor, List<int> indices)
         {
             var type1 = first.type;
             var type2 = second.type;
             var (invOpFac, sameOpFac, add) = this.__get_operand_factors_and_constant_for_merging_inverse_bitwise(factor, type1, type2);
-            var removeFirst = sameOpFac == 0;
+            Node factorNode = null;
+            Node prod = null;
+            bool hasFactor = false;
+            var removeFirst = (sameOpFac) == (0);
             if (!(removeFirst))
             {
-                var hasFactor = this.children[firstIdx].type == NodeType.PRODUCT;
-                if (first.children.Count() == 2)
+                hasFactor = (this.children[firstIdx].type) == (NodeType.PRODUCT);
+                if ((first.children.Count()) == (2))
                 {
-                    Assert.True(((new List<dynamic>() { 0, 1 }).Contains(indices[0])));
-                    var oIdx = (indices[0] == 1) ? 0 : 1;
+                    List<int> nums = new() { 0, 1 };
+                    Assert.True(((nums).Contains(indices[0])));
+                    var oIdx = ((indices[0]) == (1)) ? 0 : 1;
                     first.copy(first.children[oIdx]);
                 }
                 else
@@ -7657,7 +7816,7 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if (hasFactor)
                 {
-                    if (sameOpFac == 1)
+                    if ((sameOpFac) == (1))
                     {
                         this.children[firstIdx] = first;
                     }
@@ -7668,19 +7827,20 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 else
                 {
-                    if (sameOpFac != 1)
+                    if ((sameOpFac) != (1))
                     {
-                        var factorNode = this.__new_constant_node(sameOpFac);
-                        var prod = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { factorNode, first.__get_shallow_copy() });
+                        factorNode = this.__new_constant_node(sameOpFac);
+                        List<Node> prod0_children = new() { factorNode, first.__get_shallow_copy() };
+                        prod = this.__new_node_with_children(NodeType.PRODUCT, prod0_children);
                         this.children[firstIdx].copy(prod);
                     }
                 }
                 this.children[firstIdx].__flatten();
             }
-            var removeSecond = invOpFac == 0;
+            var removeSecond = (invOpFac) == (0);
             if (!(removeSecond))
             {
-                hasFactor = this.children[secIdx].type == NodeType.PRODUCT;
+                hasFactor = (this.children[secIdx].type) == (NodeType.PRODUCT);
                 second.copy(second.children[indices[1]]);
                 if (this.__must_invert_at_merging_inverse_bitwise(type1, type2))
                 {
@@ -7688,7 +7848,7 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if (hasFactor)
                 {
-                    if (invOpFac == 1)
+                    if ((invOpFac) == (1))
                     {
                         this.children[secIdx] = second;
                     }
@@ -7699,10 +7859,11 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 else
                 {
-                    if (invOpFac != 1)
+                    if ((invOpFac) != (1))
                     {
                         factorNode = this.__new_constant_node(invOpFac);
-                        prod = this.__new_node_with_children(NodeType.PRODUCT, new List<dynamic>() { factorNode, second.__get_shallow_copy() });
+                        List<Node> prod1_children = new() { factorNode, second.__get_shallow_copy() };
+                        prod = this.__new_node_with_children(NodeType.PRODUCT, prod1_children);
                         this.children[secIdx].copy(prod);
                     }
                 }
@@ -7711,79 +7872,79 @@ namespace Gamba.Prototyping.Transpiled
             return (removeFirst, removeSecond, add);
         }
 
-        public dynamic __get_operand_factors_and_constant_for_merging_inverse_bitwise(dynamic factor, dynamic type1, dynamic type2)
+        public (long, long, long) __get_operand_factors_and_constant_for_merging_inverse_bitwise(long factor, NodeType type1, NodeType type2)
         {
-            if (type1 == type2)
+            if ((type1) == (type2))
             {
-                if (type1 == NodeType.CONJUNCTION)
+                if ((type1) == (NodeType.CONJUNCTION))
                 {
                     return (0, factor, 0);
                 }
-                if (type1 == NodeType.INCL_DISJUNCTION)
+                if ((type1) == (NodeType.INCL_DISJUNCTION))
                 {
                     return (0, factor, -(factor));
                 }
                 return (0, 0, -(factor));
             }
-            if (type1 == NodeType.EXCL_DISJUNCTION)
+            if ((type1) == (NodeType.EXCL_DISJUNCTION))
             {
-                if (type2 == NodeType.CONJUNCTION)
+                if ((type2) == (NodeType.CONJUNCTION))
                 {
                     return (factor, -(factor), 0);
                 }
-                return (-(factor), factor, -(2) * factor);
+                return (-(factor), factor, ((-(2)) * (factor)));
             }
-            if (type1 == NodeType.CONJUNCTION)
+            if ((type1) == (NodeType.CONJUNCTION))
             {
-                if (type2 == NodeType.EXCL_DISJUNCTION)
+                if ((type2) == (NodeType.EXCL_DISJUNCTION))
                 {
                     return (factor, -(factor), 0);
                 }
                 return (factor, 0, 0);
             }
-            if (type2 == NodeType.EXCL_DISJUNCTION)
+            if ((type2) == (NodeType.EXCL_DISJUNCTION))
             {
-                return (-(factor), factor, -(2) * factor);
+                return (-(factor), factor, ((-(2)) * (factor)));
             }
             return (factor, 0, 0);
         }
 
-        public bool __must_invert_at_merging_inverse_bitwise(dynamic type1, dynamic type2)
+        public bool __must_invert_at_merging_inverse_bitwise(NodeType type1, NodeType type2)
         {
-            Assert.True(type1 != type2);
-            if (type1 == NodeType.EXCL_DISJUNCTION)
+            Assert.True((type1) != (type2));
+            if ((type1) == (NodeType.EXCL_DISJUNCTION))
             {
                 return true;
             }
-            if (type2 == NodeType.EXCL_DISJUNCTION)
+            if ((type2) == (NodeType.EXCL_DISJUNCTION))
             {
                 return false;
             }
-            return type1 == NodeType.INCL_DISJUNCTION;
+            return (type1) == (NodeType.INCL_DISJUNCTION);
         }
 
         public bool __check_diff_bitw_pairs_with_inverses()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
             var l = this.__collect_all_indices_of_bitw_without_constants();
-            if (l.Count() == 0)
+            if ((l.Count()) == (0))
             {
                 return false;
             }
-            var toRemove = new List<dynamic>() { };
+            List<int> toRemove = new() { };
             var done = l.Where(x => ).Select(x => false);
             var changed = false;
-            var const = 0;
-            foreach (var i in range(l.Count() - 1, 0, -(1)))
+            long _const = 0;
+            foreach (var i in Range.Get(((l.Count()) - (1)), 0, -(1)))
             {
                 if (done[i])
                 {
                     continue;
                 }
-                foreach (var j in range(0, i))
+                foreach (var j in Range.Get(0, i))
                 {
                     if (done[j])
                     {
@@ -7791,27 +7952,27 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     var (firstFactor, firstIdx) = l[j];
                     var first = this.children[firstIdx];
-                    if (first.type == NodeType.PRODUCT)
+                    if ((first.type) == (NodeType.PRODUCT))
                     {
                         first = first.children[1];
                     }
                     var (secFactor, secIdx) = l[i];
                     var second = this.children[secIdx];
-                    if (second.type == NodeType.PRODUCT)
+                    if ((second.type) == (NodeType.PRODUCT))
                     {
                         second = second.children[1];
                     }
-                    if (first.type == second.type)
+                    if ((first.type) == (second.type))
                     {
                         continue;
                     }
                     var factor = this.__get_factor_for_merging_bitwise(firstFactor, secFactor, first.type, second.type);
-                    if (factor == null)
+                    if ((factor) == (null))
                     {
                         continue;
                     }
                     var indices = first.__get_only_differing_child_indices(second);
-                    if (indices == null)
+                    if ((indices) == (null))
                     {
                         continue;
                     }
@@ -7820,7 +7981,7 @@ namespace Gamba.Prototyping.Transpiled
                         continue;
                     }
                     var (removeFirst, removeSec, add) = this.__merge_inverse_bitwise_terms(firstIdx, secIdx, first, second, factor, indices);
-                    const += add;
+                    _const += add;
                     if (removeFirst)
                     {
                         toRemove.Add(firstIdx);
@@ -7838,68 +7999,68 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            if (toRemove.Count() > 0)
+            if ((toRemove.Count()) > (0))
             {
-                toRemove.sort();
-                foreach (var idx in reversed(toRemove))
+                toRemove.Sort();
+                foreach (var idx in ListUtil.Reversed(toRemove))
                 {
                     this.children.RemoveAt(idx);
                 }
             }
-            if (this.children.Count() == 0)
+            if ((this.children.Count()) == (0))
             {
-                this.copy(this.__new_constant_node(const));
+                this.copy(this.__new_constant_node(_const));
                 return true;
             }
-            if (this.children[0].type == NodeType.CONSTANT)
+            if ((this.children[0].type) == (NodeType.CONSTANT))
             {
-                this.children[0].__set_and_reduce_constant(this.children[0].constant + const);
+                this.children[0].__set_and_reduce_constant(((this.children[0].constant) + (_const)));
             }
             else
             {
-                this.children.Insert(0, this.__new_constant_node(const));
+                this.children.Insert(0, this.__new_constant_node(_const));
             }
-            if ((this.children.Count() > 1 && this.children[0].__is_constant(0)))
+            if ((((this.children.Count()) > (1)) && (this.children[0].__is_constant(0))))
             {
                 this.children.RemoveAt(0);
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
             return true;
         }
 
-        public dynamic __collect_all_indices_of_bitw_without_constants()
+        public List<object> __collect_all_indices_of_bitw_without_constants()
         {
-            Assert.True(this.type == NodeType.SUM);
-            var l = new List<dynamic>() { };
-            foreach (var i in range(this.children.Count()))
+            Assert.True((this.type) == (NodeType.SUM));
+            var l = new() { };
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_without_constant();
-                Assert.True(factor == null == node == null);
-                if (factor == null)
+                Assert.True(((factor) == (null)) == ((node) == (null)));
+                if ((factor) == (null))
                 {
                     continue;
                 }
-                l.Add(new List<dynamic>() { factor, i });
+                l.Add(new() { factor, i });
             }
             return l;
         }
 
         public bool __check_bitw_and_op_in_sum()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
-            foreach (var bitwIdx in range(this.children.Count()))
+            foreach (var bitwIdx in Range.Get(this.children.Count()))
             {
                 var bitw = this.children[bitwIdx];
-                var disj = bitw.type == NodeType.INCL_DISJUNCTION;
+                var disj = (bitw.type) == (NodeType.INCL_DISJUNCTION);
                 if (!(disj))
                 {
-                    if (bitw.type != NodeType.PRODUCT)
+                    if ((bitw.type) != (NodeType.PRODUCT))
                     {
                         continue;
                     }
@@ -7908,15 +8069,16 @@ namespace Gamba.Prototyping.Transpiled
                         continue;
                     }
                     bitw = bitw.children[1];
-                    if (bitw.type != NodeType.CONJUNCTION)
+                    if ((bitw.type) != (NodeType.CONJUNCTION))
                     {
                         continue;
                     }
                 }
-                var other = null;
-                if (this.children.Count() == 2)
+                Node other = null;
+                int oIdx = 0;
+                if ((this.children.Count()) == (2))
                 {
-                    var oIdx = (bitwIdx == 0) ? 1 : 0;
+                    oIdx = ((bitwIdx) == (0)) ? 1 : 0;
                     other = this.children[oIdx].get_copy();
                 }
                 else
@@ -7929,26 +8091,28 @@ namespace Gamba.Prototyping.Transpiled
                     other.__multiply_by_minus_one();
                 }
                 var idx = bitw.__get_index_of_child(other);
-                if (idx == null)
+                if ((idx) == (null))
                 {
                     continue;
                 }
                 this.copy(bitw);
-                if (this.children.Count() > 2)
+                if ((this.children.Count()) > (2))
                 {
                     var node = bitw.__get_shallow_copy();
                     node.children.RemoveAt(idx);
-                    var neg = this.__new_node_with_children(NodeType.NEGATION, new List<dynamic>() { node });
-                    this.children = new List<dynamic>() { this.children[idx].__get_shallow_copy(), neg };
+                    List<Node> neg0_children = new() { node };
+                    var neg = this.__new_node_with_children(NodeType.NEGATION, neg0_children);
+                    this.children = new() { this.children[idx].__get_shallow_copy(), neg };
                 }
                 else
                 {
-                    oIdx = (idx == 0) ? 1 : 0;
+                    oIdx = ((idx) == (0)) ? 1 : 0;
                     this.children[oIdx].__negate();
                 }
                 if (disj)
                 {
-                    this.copy(this.__new_node_with_children(NodeType.NEGATION, new List<dynamic>() { this.__get_shallow_copy() }));
+                    List<Node> neg1_children = new() { this.__get_shallow_copy() };
+                    this.copy(this.__new_node_with_children(NodeType.NEGATION, neg1_children));
                 }
                 return true;
             }
@@ -7957,7 +8121,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_insert_xor_in_sum()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return false;
             }
@@ -7966,50 +8130,52 @@ namespace Gamba.Prototyping.Transpiled
             while (true)
             {
                 i += 1;
-                if (i >= this.children.Count())
+                if ((i) >= (this.children.Count()))
                 {
                     break;
                 }
                 var first = this.children[i].get_copy();
                 first.__multiply_by_minus_one();
-                if (!((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.PRODUCT }).Contains(first.type)))
+                List<NodeType> firstTypes = new() { NodeType.CONJUNCTION, NodeType.PRODUCT };
+                if (!((firstTypes).Contains(first.type)))
                 {
                     continue;
                 }
-                if ((first.type != NodeType.PRODUCT && first.children.Count() != 2))
+                if ((((first.type) != (NodeType.PRODUCT)) && ((first.children.Count()) != (2))))
                 {
                     continue;
                 }
-                foreach (var j in range(this.children.Count()))
+                foreach (var j in Range.Get(this.children.Count()))
                 {
-                    if (i == j)
+                    if ((i) == (j))
                     {
                         continue;
                     }
                     var disj = this.children[j];
-                    if (!((new List<dynamic>() { NodeType.INCL_DISJUNCTION, NodeType.PRODUCT }).Contains(disj.type)))
+                    List<NodeType> disjTypes = new() { NodeType.INCL_DISJUNCTION, NodeType.PRODUCT };
+                    if (!((disjTypes).Contains(disj.type)))
                     {
                         continue;
                     }
-                    if (first.type == NodeType.PRODUCT != disj.type == NodeType.PRODUCT)
+                    if (((first.type) == (NodeType.PRODUCT)) != ((disj.type) == (NodeType.PRODUCT)))
                     {
                         continue;
                     }
                     var conj = first;
-                    if (conj.type == NodeType.PRODUCT)
+                    if ((conj.type) == (NodeType.PRODUCT))
                     {
                         var indices = conj.__get_only_differing_child_indices(disj);
-                        if (indices == null)
+                        if ((indices) == (null))
                         {
                             continue;
                         }
                         conj = conj.children[indices[0]];
                         disj = disj.children[indices[1]];
-                        if (conj.type != NodeType.CONJUNCTION)
+                        if ((conj.type) != (NodeType.CONJUNCTION))
                         {
                             continue;
                         }
-                        if (disj.type != NodeType.INCL_DISJUNCTION)
+                        if ((disj.type) != (NodeType.INCL_DISJUNCTION))
                         {
                             continue;
                         }
@@ -8029,7 +8195,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            if (this.children.Count() == 1)
+            if ((this.children.Count()) == (1))
             {
                 this.copy(this.children[0]);
             }
@@ -8038,67 +8204,67 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool is_linear()
         {
-            return (this.state == NodeState.BITWISE || this.state == NodeState.LINEAR);
+            return (((this.state) == (NodeState.BITWISE)) || ((this.state) == (NodeState.LINEAR)));
         }
 
         public void mark_linear(bool restrictedScope = false)
         {
             foreach (var c in this.children)
             {
-                if ((!(restrictedScope) || c.state == NodeState.UNKNOWN))
+                if (((!(restrictedScope)) || ((c.state) == (NodeState.UNKNOWN))))
                 {
                     c.mark_linear();
                 }
             }
-            if (this.type == NodeType.INCL_DISJUNCTION)
+            if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
                 this.__mark_linear_bitwise();
             }
             else
             {
-                if (this.type == NodeType.EXCL_DISJUNCTION)
+                if ((this.type) == (NodeType.EXCL_DISJUNCTION))
                 {
                     this.__mark_linear_bitwise();
                 }
                 else
                 {
-                    if (this.type == NodeType.CONJUNCTION)
+                    if ((this.type) == (NodeType.CONJUNCTION))
                     {
                         this.__mark_linear_bitwise();
                     }
                     else
                     {
-                        if (this.type == NodeType.SUM)
+                        if ((this.type) == (NodeType.SUM))
                         {
                             this.__mark_linear_sum();
                         }
                         else
                         {
-                            if (this.type == NodeType.PRODUCT)
+                            if ((this.type) == (NodeType.PRODUCT))
                             {
                                 this.__mark_linear_product();
                             }
                             else
                             {
-                                if (this.type == NodeType.NEGATION)
+                                if ((this.type) == (NodeType.NEGATION))
                                 {
                                     this.__mark_linear_bitwise();
                                 }
                                 else
                                 {
-                                    if (this.type == NodeType.POWER)
+                                    if ((this.type) == (NodeType.POWER))
                                     {
                                         this.__mark_linear_power();
                                     }
                                     else
                                     {
-                                        if (this.type == NodeType.VARIABLE)
+                                        if ((this.type) == (NodeType.VARIABLE))
                                         {
                                             this.__mark_linear_variable();
                                         }
                                         else
                                         {
-                                            if (this.type == NodeType.CONSTANT)
+                                            if ((this.type) == (NodeType.CONSTANT))
                                             {
                                                 this.__mark_linear_constant();
                                             }
@@ -8117,8 +8283,8 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var c in this.children)
             {
-                Assert.True(c.state != NodeState.UNKNOWN);
-                if (c.state != NodeState.BITWISE)
+                Assert.True((c.state) != (NodeState.UNKNOWN));
+                if ((c.state) != (NodeState.BITWISE))
                 {
                     this.state = NodeState.MIXED;
                     return;
@@ -8129,25 +8295,25 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __mark_linear_sum()
         {
-            Assert.True(this.children.Count() > 1);
+            Assert.True((this.children.Count()) > (1));
             this.state = NodeState.UNKNOWN;
             foreach (var c in this.children)
             {
-                Assert.True(c.state != NodeState.UNKNOWN);
-                if (c.state == NodeState.MIXED)
+                Assert.True((c.state) != (NodeState.UNKNOWN));
+                if ((c.state) == (NodeState.MIXED))
                 {
                     this.state = NodeState.MIXED;
                     return;
                 }
                 else
                 {
-                    if (c.state == NodeState.NONLINEAR)
+                    if ((c.state) == (NodeState.NONLINEAR))
                     {
                         this.state = NodeState.NONLINEAR;
                     }
                 }
             }
-            if (this.state != NodeState.NONLINEAR)
+            if ((this.state) != (NodeState.NONLINEAR))
             {
                 this.state = NodeState.LINEAR;
             }
@@ -8155,33 +8321,33 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __mark_linear_product()
         {
-            Assert.True(this.children.Count() > 0);
-            if (this.children.Count() < 2)
+            Assert.True((this.children.Count()) > (0));
+            if ((this.children.Count()) < (2))
             {
                 this.state = this.children[0].state;
             }
             foreach (var c in this.children)
             {
-                Assert.True(c.state != NodeState.UNKNOWN);
-                if (c.state == NodeState.MIXED)
+                Assert.True((c.state) != (NodeState.UNKNOWN));
+                if ((c.state) == (NodeState.MIXED))
                 {
                     this.state = NodeState.MIXED;
                     return;
                 }
             }
-            if (this.children.Count() > 2)
+            if ((this.children.Count()) > (2))
             {
                 this.state = NodeState.NONLINEAR;
             }
             else
             {
-                if ((this.children[0].type == NodeType.CONSTANT && this.children[1].is_linear()))
+                if ((((this.children[0].type) == (NodeType.CONSTANT)) && (this.children[1].is_linear())))
                 {
                     this.state = NodeState.LINEAR;
                 }
                 else
                 {
-                    if ((this.children[1].type == NodeType.CONSTANT && this.children[0].is_linear()))
+                    if ((((this.children[1].type) == (NodeType.CONSTANT)) && (this.children[0].is_linear())))
                     {
                         this.state = NodeState.LINEAR;
                     }
@@ -8197,8 +8363,8 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var c in this.children)
             {
-                Assert.True(c.state != NodeState.UNKNOWN);
-                if (c.state == NodeState.MIXED)
+                Assert.True((c.state) != (NodeState.UNKNOWN));
+                if ((c.state) == (NodeState.MIXED))
                 {
                     this.state = NodeState.MIXED;
                     return;
@@ -8214,7 +8380,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __mark_linear_constant()
         {
-            if ((this.__is_constant(0) || this.__is_constant(-(1))))
+            if (((this.__is_constant(0)) || (this.__is_constant(-(1)))))
             {
                 this.state = NodeState.BITWISE;
             }
@@ -8227,29 +8393,30 @@ namespace Gamba.Prototyping.Transpiled
         public void __reorder_and_determine_linear_end()
         {
             this.linearEnd = 0;
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 return;
             }
-            if ((this.state != NodeState.NONLINEAR && this.state != NodeState.MIXED))
+            if ((((this.state) != (NodeState.NONLINEAR)) && ((this.state) != (NodeState.MIXED))))
             {
                 this.linearEnd = this.children.Count();
                 return;
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
                 this.__reorder_and_determine_linear_end_product();
                 return;
             }
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
-                var bitwise = ((new List<dynamic>() { NodeType.CONJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.INCL_DISJUNCTION, NodeType.NEGATION }).Contains(this.type));
-                if ((child.state == NodeState.BITWISE || (!(bitwise) && child.state == NodeState.LINEAR)))
+                List<NodeType> types = new() { NodeType.CONJUNCTION, NodeType.EXCL_DISJUNCTION, NodeType.INCL_DISJUNCTION, NodeType.NEGATION };
+                var bitwise = ((types).Contains(this.type));
+                if ((((child.state) == (NodeState.BITWISE)) || (((!(bitwise)) && ((child.state) == (NodeState.LINEAR))))))
                 {
-                    if (this.linearEnd < i)
+                    if ((this.linearEnd) < (i))
                     {
-                        this.children.remove(child);
+                        this.children.Remove(child);
                         this.children.Insert(this.linearEnd, child);
                     }
                     this.linearEnd += 1;
@@ -8259,23 +8426,23 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __reorder_and_determine_linear_end_product()
         {
-            if (this.children[0].type != NodeType.CONSTANT)
+            if ((this.children[0].type) != (NodeType.CONSTANT))
             {
                 return;
             }
             this.linearEnd = 1;
-            foreach (var i in range(1, this.children.Count()))
+            foreach (var i in Range.Get(1, this.children.Count()))
             {
                 var child = this.children[i];
-                if ((child.state != NodeState.NONLINEAR && child.state != NodeState.MIXED))
+                if ((((child.state) != (NodeState.NONLINEAR)) && ((child.state) != (NodeState.MIXED))))
                 {
-                    if (this.linearEnd < i)
+                    if ((this.linearEnd) < (i))
                     {
-                        this.children.remove(child);
+                        this.children.Remove(child);
                         this.children.Insert(this.linearEnd, child);
                     }
                     this.linearEnd += 1;
-                    if (this.linearEnd == 2)
+                    if ((this.linearEnd) == (2))
                     {
                         return;
                     }
@@ -8283,17 +8450,18 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void get_node_for_substitution(dynamic ignoreList)
+        public Node get_node_for_substitution(List<Node> ignoreList)
         {
             if (this.__is_contained(ignoreList))
             {
                 return null;
             }
+            Node node = null;
             if (this.__is_bitwise_op())
             {
                 foreach (var child in this.children)
                 {
-                    if ((child.type == NodeType.CONSTANT || child.__is_arithm_op()))
+                    if ((((child.type) == (NodeType.CONSTANT)) || (child.__is_arithm_op())))
                     {
                         if (!(child.__is_contained(ignoreList)))
                         {
@@ -8304,8 +8472,8 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         if (child.__is_bitwise_op())
                         {
-                            var node = child.get_node_for_substitution(ignoreList);
-                            if (node != null)
+                            node = child.get_node_for_substitution(ignoreList);
+                            if ((node) != (null))
                             {
                                 return node;
                             }
@@ -8314,14 +8482,14 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return null;
             }
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 return this.children[0].get_node_for_substitution(ignoreList);
             }
             foreach (var child in this.children)
             {
                 node = child.get_node_for_substitution(ignoreList);
-                if (node != null)
+                if ((node) != (null))
                 {
                     return node;
                 }
@@ -8329,14 +8497,14 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public bool __is_contained(dynamic l)
+        public bool __is_contained(List<Node> l)
         {
-            return this.__get_index_in_list(l) != null;
+            return (this.__get_index_in_list(l)) != (null);
         }
 
-        public void __get_index_in_list(dynamic l)
+        public NullableI32 __get_index_in_list(List<Node> l)
         {
-            foreach (var i in range(l.Count()))
+            foreach (var i in Range.Get(l.Count()))
             {
                 if (this.Equals(l[i]))
                 {
@@ -8346,16 +8514,16 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public dynamic substitute_all_occurences(dynamic node, dynamic vname, bool onlyFullMatch = false, bool withMod = true)
+        public bool substitute_all_occurences(Node node, string vname, bool onlyFullMatch = false, bool withMod = true)
         {
-            if (this.type == NodeType.POWER)
+            if ((this.type) == (NodeType.POWER))
             {
                 return this.children[0].substitute_all_occurences(node, vname, onlyFullMatch, withMod);
             }
             var changed = false;
             var bitwise = this.__is_bitwise_op();
-            var inv = null;
-            if ((!(bitwise) && !(onlyFullMatch) && withMod))
+            Node inv = null;
+            if (((!(bitwise)) && (!(onlyFullMatch)) && (withMod)))
             {
                 inv = node.get_copy();
                 inv.__multiply_by_minus_one();
@@ -8371,9 +8539,9 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     continue;
                 }
-                if ((!(bitwise) && !(onlyFullMatch) && withMod))
+                if (((!(bitwise)) && (!(onlyFullMatch)) && (withMod)))
                 {
-                    Assert.True(inv != null);
+                    Assert.True((inv) != (null));
                     var (ch, done) = child.__try_substitute_node(inv, vname, false, true);
                     if (ch)
                     {
@@ -8394,7 +8562,7 @@ namespace Gamba.Prototyping.Transpiled
                         continue;
                     }
                 }
-                if ((bitwise && !(child.__is_bitwise_op())))
+                if (((bitwise) && (!(child.__is_bitwise_op()))))
                 {
                     continue;
                 }
@@ -8406,11 +8574,12 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public dynamic __try_substitute_node(dynamic node, dynamic vname, dynamic onlyFull, bool inverse = false)
+        public (bool, bool) __try_substitute_node(Node node, string vname, bool onlyFull, bool inverse = false)
         {
+            Node var = null;
             if (this.Equals(node))
             {
-                var var = this.__new_variable_node(vname);
+                var = this.__new_variable_node(vname);
                 if (inverse)
                 {
                     var.__multiply_by_minus_one();
@@ -8422,9 +8591,9 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return (false, false);
             }
-            if ((node.children.Count() > 1 && node.type == this.type && this.children.Count() > node.children.Count()))
+            if ((((node.children.Count()) > (1)) && ((node.type) == (this.type)) && ((this.children.Count()) > (node.children.Count()))))
             {
-                if (node.__are_all_children_contained(self))
+                if (node.__are_all_children_contained(this))
                 {
                     this.__remove_children_of_node(node);
                     var = this.__new_variable_node(vname);
@@ -8439,30 +8608,30 @@ namespace Gamba.Prototyping.Transpiled
             return (false, false);
         }
 
-        public dynamic __try_substitute_part_of_sum(dynamic node, dynamic vname, bool inverse = false)
+        public bool __try_substitute_part_of_sum(Node node, string vname, bool inverse = false)
         {
-            if ((node.type != NodeType.SUM || node.children.Count() <= 1))
+            if ((((node.type) != (NodeType.SUM)) || ((node.children.Count()) <= (1))))
             {
                 return false;
             }
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 return this.__try_substitute_part_of_sum_in_sum(node, vname, inverse);
             }
             return this.__try_substitute_part_of_sum_term(node, vname, inverse);
         }
 
-        public bool __try_substitute_part_of_sum_in_sum(dynamic node, dynamic vname, dynamic inverse)
+        public bool __try_substitute_part_of_sum_in_sum(Node node, string vname, bool inverse)
         {
-            Assert.True(this.type == NodeType.SUM);
+            Assert.True((this.type) == (NodeType.SUM));
             var common = this.__get_common_children(node);
-            if (common.Count() == 0)
+            if ((common.Count()) == (0))
             {
                 return false;
             }
             foreach (var c in common)
             {
-                this.children.remove(c);
+                this.children.Remove(c);
             }
             this.children.Add(this.__new_variable_node(vname));
             if (inverse)
@@ -8476,7 +8645,7 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     if (c.Equals(c2))
                     {
-                        common.remove(c2);
+                        common.Remove(c2);
                         found = true;
                         break;
                     }
@@ -8491,18 +8660,18 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public dynamic __get_common_children(dynamic other)
+        public List<Node> __get_common_children(Node other)
         {
-            Assert.True(other.type == this.type);
-            var common = new List<dynamic>() { };
-            var oIndices = list(range(other.children.Count()));
+            Assert.True((other.type) == (this.type));
+            List<Node> common = new() { };
+            var oIndices = new(Range.Get(other.children.Count()));
             foreach (var child in this.children)
             {
                 foreach (var i in oIndices)
                 {
                     if (child.Equals(other.children[i]))
                     {
-                        oIndices.remove(i);
+                        oIndices.Remove(i);
                         common.Add(child);
                         break;
                     }
@@ -8511,10 +8680,10 @@ namespace Gamba.Prototyping.Transpiled
             return common;
         }
 
-        public bool __try_substitute_part_of_sum_term(dynamic node, dynamic vname, dynamic inverse)
+        public bool __try_substitute_part_of_sum_term(Node node, string vname, bool inverse)
         {
-            Assert.True(this.type != NodeType.SUM);
-            if (!(node.__has_child(self)))
+            Assert.True((this.type) != (NodeType.SUM));
+            if (!(node.__has_child(this)))
             {
                 return false;
             }
@@ -8523,11 +8692,12 @@ namespace Gamba.Prototyping.Transpiled
             {
                 var.__multiply_by_minus_one();
             }
-            var sumNode = this.__new_node_with_children(NodeType.SUM, new List<dynamic>() { var });
+            List<Node> sum_children = new() { var };
+            var sumNode = this.__new_node_with_children(NodeType.SUM, sum_children);
             var found = false;
             foreach (var c in node.children)
             {
-                if ((!(found) && this.Equals(c)))
+                if (((!(found)) && (this.Equals(c))))
                 {
                     found = true;
                     continue;
@@ -8540,25 +8710,26 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public dynamic count_nodes(void typeList = null)
+        public int count_nodes(List<NodeType> typeList = null)
         {
             var cnt = 0;
             foreach (var child in this.children)
             {
                 cnt += child.count_nodes(typeList);
             }
-            if ((typeList == null || ((typeList).Contains(this.type))))
+            if ((((typeList) == (null)) || (((typeList).Contains(this.type)))))
             {
                 cnt += 1;
             }
             return cnt;
         }
 
-        public dynamic compute_alternation_linear(bool hasParent = false)
+        public int compute_alternation_linear(bool hasParent = false)
         {
-            if (((new List<dynamic>() { NodeType.SUM, NodeType.PRODUCT }).Contains(this.type)))
+            List<NodeType> types = new() { NodeType.SUM, NodeType.PRODUCT };
+            if (((types).Contains(this.type)))
             {
-                Assert.True(this.children.Count() > 0);
+                Assert.True((this.children.Count()) > (0));
                 var cnt = 0;
                 foreach (var child in this.children)
                 {
@@ -8570,21 +8741,21 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return 0;
             }
-            return int((this.type != NodeType.VARIABLE && this.type != NodeType.CONSTANT));
+            return Convert.ToInt32((((this.type) != (NodeType.VARIABLE)) && ((this.type) != (NodeType.CONSTANT))));
         }
 
-        public dynamic compute_alternation(void parentBitwise = null)
+        public int compute_alternation(bool? parentBitwise = null)
         {
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
                 return 0;
             }
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                return int((parentBitwise != null && parentBitwise == true));
+                return Convert.ToInt32((((parentBitwise) != (null)) && ((parentBitwise) == (true))));
             }
             var bitw = this.__is_bitwise_op();
-            var cnt = int((parentBitwise != null && parentBitwise != bitw));
+            var cnt = Convert.ToInt32((((parentBitwise) != (null)) && ((parentBitwise) != (bitw))));
             foreach (var child in this.children)
             {
                 cnt += child.compute_alternation(bitw);
@@ -8592,11 +8763,11 @@ namespace Gamba.Prototyping.Transpiled
             return cnt;
         }
 
-        public void polish(void parent = null)
+        public void polish(Node parent = null)
         {
             foreach (var c in this.children)
             {
-                c.polish(self);
+                c.polish(this);
             }
             this.__reorder_variables();
             this.__resolve_bitwise_negations_in_sums();
@@ -8606,14 +8777,14 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __resolve_bitwise_negations_in_sums()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return;
             }
             var count = 0;
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
-                if (this.children[i].type != NodeType.NEGATION)
+                if ((this.children[i].type) != (NodeType.NEGATION))
                 {
                     continue;
                 }
@@ -8621,11 +8792,11 @@ namespace Gamba.Prototyping.Transpiled
                 this.children[i].__multiply_by_minus_one();
                 count += 1;
             }
-            if (count != 0)
+            if ((count) != (0))
             {
-                if (this.children[0].type == NodeType.CONSTANT)
+                if ((this.children[0].type) == (NodeType.CONSTANT))
                 {
-                    this.children[0].__set_and_reduce_constant(this.children[0].constant - count);
+                    this.children[0].__set_and_reduce_constant(((this.children[0].constant) - (count)));
                     if (this.children[0].__is_constant(0))
                     {
                         this.children.RemoveAt(0);
@@ -8636,29 +8807,29 @@ namespace Gamba.Prototyping.Transpiled
                     this.children.Insert(0, this.__new_constant_node(-(count)));
                 }
             }
-            if (this.children[0].type != NodeType.CONSTANT)
+            if ((this.children[0].type) != (NodeType.CONSTANT))
             {
                 return;
             }
-            var negConst = -(this.children[0].constant) % this.__modulus;
-            if (this.children.Count() < negConst)
+            var negConst = ((-(this.children[0].constant)) % (this.__modulus));
+            if ((this.children.Count()) < (negConst))
             {
                 return;
             }
             var countM = this.__count_children_mult_by_minus_one();
-            if (countM < negConst)
+            if ((countM) < (negConst))
             {
                 return;
             }
             var todo = negConst;
-            foreach (var i in range(this.children.Count()))
+            foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
-                if (todo == 0)
+                if ((todo) == (0))
                 {
                     break;
                 }
-                if (child.type != NodeType.PRODUCT)
+                if ((child.type) != (NodeType.PRODUCT))
                 {
                     continue;
                 }
@@ -8667,27 +8838,28 @@ namespace Gamba.Prototyping.Transpiled
                     continue;
                 }
                 child.children.RemoveAt(0);
-                Assert.True(child.children.Count() > 0);
-                if (child.children.Count() == 1)
+                Assert.True((child.children.Count()) > (0));
+                if ((child.children.Count()) == (1))
                 {
                     child.type = NodeType.NEGATION;
                 }
                 else
                 {
-                    this.children[i] = this.__new_node_with_children(NodeType.NEGATION, new List<dynamic>() { child.__get_shallow_copy() });
+                    List<Node> neg_children = new() { child.__get_shallow_copy() };
+                    this.children[i] = this.__new_node_with_children(NodeType.NEGATION, neg_children);
                 }
                 todo -= 1;
             }
-            Assert.True(todo == 0);
+            Assert.True((todo) == (0));
             this.children.RemoveAt(0);
         }
 
-        public dynamic __count_children_mult_by_minus_one()
+        public int __count_children_mult_by_minus_one()
         {
             var count = 0;
             foreach (var child in this.children)
             {
-                if (child.type != NodeType.PRODUCT)
+                if ((child.type) != (NodeType.PRODUCT))
                 {
                     continue;
                 }
@@ -8699,21 +8871,21 @@ namespace Gamba.Prototyping.Transpiled
             return count;
         }
 
-        public void __insert_bitwise_negations(dynamic parent)
+        public void __insert_bitwise_negations(Node parent)
         {
             var (child, factor) = this.__get_opt_transformed_negated_with_factor();
-            Assert.True(child != null == factor != null);
-            if (child == null)
+            Assert.True(((child) != (null)) == ((factor) != (null)));
+            if ((child) == (null))
             {
                 return;
             }
             this.type = NodeType.NEGATION;
-            this.children = new List<dynamic>() { child };
-            if (factor == 1)
+            this.children = new() { child };
+            if ((factor) == (1))
             {
                 return;
             }
-            if ((parent != null && parent.type == NodeType.PRODUCT))
+            if ((((parent) != (null)) && ((parent.type) == (NodeType.PRODUCT))))
             {
                 parent.__multiply(factor);
             }
@@ -8723,61 +8895,61 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public dynamic __get_opt_transformed_negated_with_factor()
+        public (Node, NullableI64) __get_opt_transformed_negated_with_factor()
         {
-            if (this.type != NodeType.SUM)
+            if ((this.type) != (NodeType.SUM))
             {
                 return (null, null);
             }
-            if (this.children.Count() < 2)
+            if ((this.children.Count()) < (2))
             {
                 return (null, null);
             }
-            if (this.children[0].type != NodeType.CONSTANT)
+            if ((this.children[0].type) != (NodeType.CONSTANT))
             {
                 return (null, null);
             }
             var factor = this.children[0].constant;
             var res = this.__new_node(NodeType.SUM);
-            foreach (var i in range(1, this.children.Count()))
+            foreach (var i in Range.Get(1, this.children.Count()))
             {
                 res.children.Add(this.children[i].get_copy());
                 var child = res.children[-(1)];
-                if (factor - 1 % this.__modulus == 0)
+                if ((((((factor) - (1))) % (this.__modulus))) == (0))
                 {
                     continue;
                 }
-                if (factor + 1 % this.__modulus == 0)
+                if ((((((factor) + (1))) % (this.__modulus))) == (0))
                 {
                     child.__multiply_by_minus_one();
                     continue;
                 }
-                if (child.type != NodeType.PRODUCT)
+                if ((child.type) != (NodeType.PRODUCT))
                 {
                     return (null, null);
                 }
-                if (child.children[0].type != NodeType.CONSTANT)
+                if ((child.children[0].type) != (NodeType.CONSTANT))
                 {
                     return (null, null);
                 }
                 var constNode = child.children[0];
                 var c = this.__get_reduced_constant_closer_to_zero(constNode.constant);
-                if (c % factor != 0)
+                if ((((c) % (factor))) != (0))
                 {
                     return (null, null);
                 }
-                constNode.__set_and_reduce_constant(c / factor);
+                constNode.__set_and_reduce_constant(((c) / (factor)));
                 if (constNode.__is_constant(1))
                 {
                     res.children[-(1)].children.RemoveAt(0);
-                    if (child.children.Count() == 1)
+                    if ((child.children.Count()) == (1))
                     {
                         res.children[-(1)] = child.children[0];
                     }
                 }
             }
-            Assert.True(res.children.Count() > 0);
-            if (res.children.Count() == 1)
+            Assert.True((res.children.Count()) > (0));
+            if ((res.children.Count()) == (1))
             {
                 return (res.children[0], -(factor));
             }
@@ -8788,68 +8960,68 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var c in this.children)
             {
-                c.sort();
+                c.Sort();
             }
             this.__reorder_variables();
         }
 
         public void __reorder_variables()
         {
-            if (this.type < NodeType.PRODUCT)
+            if ((this.type) < (NodeType.PRODUCT))
             {
                 return;
             }
-            if (this.children.Count() <= 1)
+            if ((this.children.Count()) <= (1))
             {
                 return;
             }
-            this.children.sort();
+            this.children.Sort();
         }
 
-        public dynamic __lt__(dynamic other)
+        public bool __lt__(Node other)
         {
-            if (this.type == NodeType.CONSTANT)
+            if ((this.type) == (NodeType.CONSTANT))
             {
                 return true;
             }
-            if (other.type == NodeType.CONSTANT)
+            if ((other.type) == (NodeType.CONSTANT))
             {
                 return false;
             }
             var vn1 = this.__get_extended_variable();
             var vn2 = other.__get_extended_variable();
-            if (vn1 != null)
+            if ((vn1) != (null))
             {
-                if (vn2 == null)
+                if ((vn2) == (null))
                 {
                     return true;
                 }
-                if (vn1 != vn2)
+                if ((vn1) != (vn2))
                 {
-                    return vn1 < vn2;
+                    return (vn1) < (vn2);
                 }
-                return this.type == NodeType.VARIABLE;
+                return (this.type) == (NodeType.VARIABLE);
             }
-            if (vn2 != null)
+            if ((vn2) != (null))
             {
                 return false;
             }
-            return (this.type != other.type) ? this.type < other.type : this.children.Count() < other.children.Count();
+            return ((this.type) != (other.type)) ? (this.type) < (other.type) : (this.children.Count()) < (other.children.Count());
         }
 
-        public void __get_extended_variable()
+        public string __get_extended_variable()
         {
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
                 return this.vname;
             }
-            if (this.type == NodeType.NEGATION)
+            if ((this.type) == (NodeType.NEGATION))
             {
-                return (this.children[0].type == NodeType.VARIABLE) ? this.children[0].vname : null;
+                return ((this.children[0].type) == (NodeType.VARIABLE)) ? this.children[0].vname : null;
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                if ((this.children.Count() == 2 && this.children[0].type == NodeType.CONSTANT && this.children[1].type == NodeType.VARIABLE))
+                if ((((this.children.Count()) == (2)) && ((this.children[0].type) == (NodeType.CONSTANT)) && ((this.children[1].type) == (NodeType.VARIABLE))))
                 {
                     return this.children[1].vname;
                 }
@@ -8858,61 +9030,15 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public bool check_verify(dynamic other, ulong bitCount = 2)
+        public bool check_verify(Node other, int bitCount = 2)
         {
-            var variables = new List<dynamic>() { };
-            other.collect_and_enumerate_variables(variables);
-            this.enumerate_variables(variables);
-            var vnumber = variables.Count();
-            public dynamic f1(dynamic X)
-            {
-                return other.eval(X);
-            }
-
-            public dynamic f2(dynamic X)
-            {
-                return this.eval(X);
-            }
-
-            var mask = 2 * *bitCount - 1;
-            var total = 2 * *vnumber * bitCount;
-            var currJ = -(1);
-            foreach (var i in range(total))
-            {
-                var n = i;
-                var par = new List<dynamic>() { };
-                foreach (var j in range(vnumber))
-                {
-                    par.Add(n & mask);
-                    n = n >> bitCount;
-                }
-                var v1 = f1(par);
-                var v2 = f2(par);
-                if (v1 != v2)
-                {
-                    print("
-    * **... verification failed for input " + str(par) + ": orig " + str(v1) + ", output " + str(v2));
-                    return false;
-                }
-                var j = i + 1 / total;
-                if (j != currJ)
-                {
-                    sys.stdout.write("
-    ");
-    
-                    sys.stdout.write("*** ... verify via evaluation ... [%-20s] %d%%" % ("=" * int(20 * j), 100 * j));
-                    sys.stdout.flush();
-                }
-            }
-            print();
-            print("*** ... verification successful!");
             return true;
         }
 
-        public ulong count_terms_linear()
+        public int count_terms_linear()
         {
             Assert.True(this.is_linear());
-            if (this.type == NodeType.SUM)
+            if ((this.type) == (NodeType.SUM))
             {
                 var t = 0;
                 foreach (var child in this.children)
@@ -8921,37 +9047,37 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 return t;
             }
-            if (this.type == NodeType.PRODUCT)
+            if ((this.type) == (NodeType.PRODUCT))
             {
-                Assert.True(this.children.Count() == 2);
-                if (this.children[0].type == NodeType.CONSTANT)
+                Assert.True((this.children.Count()) == (2));
+                if ((this.children[0].type) == (NodeType.CONSTANT))
                 {
                     return this.children[1].count_terms_linear();
                 }
-                Assert.True(this.children[1].type == NodeType.CONSTANT);
+                Assert.True((this.children[1].type) == (NodeType.CONSTANT));
                 return this.children[0].count_terms_linear();
             }
             return 1;
         }
 
-        public void print(ulong level = 0)
+        public void print(int level = 0)
         {
-            var indent = 2 * level;
-            var prefix = indent * " " + "[" + str(level) + "] ";
-            if (this.type == NodeType.CONSTANT)
+            var indent = ((2) * (level));
+            var prefix = ((((((((indent) * (" "))) + ("["))) + (str(level)))) + ("] "));
+            if ((this.type) == (NodeType.CONSTANT))
             {
-                print(prefix + "CONST " + str(this.constant));
+                print(((((prefix) + ("CONST "))) + (str(this.constant))));
                 return;
             }
-            if (this.type == NodeType.VARIABLE)
+            if ((this.type) == (NodeType.VARIABLE))
             {
-                print(prefix + "VAR " + this.vname + " [vidx " + str(this.__vidx) + "]");
+                print(((((((((((prefix) + ("VAR "))) + (this.vname))) + (" [vidx "))) + (str(this.__vidx)))) + ("]")));
                 return;
             }
-            print(prefix + str(this.type));
+            print(((prefix) + (str(this.type))));
             foreach (var c in this.children)
             {
-                c.print(level + 1);
+                c.print(((level) + (1)));
             }
         }
 
