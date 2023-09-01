@@ -1,9 +1,12 @@
 ﻿using Antlr4.Runtime.Dfa;
 using Gamba.Prototyping.Extensions;
 using GambaDotnet;
+using Microsoft.Z3;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -37,6 +40,8 @@ namespace Gamba.Prototyping.Transpiled
         // TODO: Verify
         public static long trailing_zeros(long n)
         {
+            return (long)BitOperations.TrailingZeroCount(n);
+
             ulong bits = 0;
             ulong x = (ulong)n;
 
@@ -54,14 +59,34 @@ namespace Gamba.Prototyping.Transpiled
         // TODO: Use an actual power implementation.
         public static long LongPower(long x, long y)
         {
+            return (long)ULongPower((ulong)x, (ulong)y);
             if (y == 0)
                 return 1;
             if (y == 1)
                 return x;
 
-            for (long i = 0; i < y; i++)
+            var original = x;
+            for (long i = 0; i < y - 1; i++)
             {
-                x = x * x;
+                x *= original;
+            }
+
+            return x;
+        }
+
+        // TODO: Use an actual power implementation.
+        public static ulong ULongPower(ulong x, ulong y)
+        {
+            ;
+            if (y == 0)
+                return 1;
+            if (y == 1)
+                return x;
+
+            var original = x;
+            for (ulong i = 0; i < y - 1; i++)
+            {
+                x = x * original;
             }
 
             return x;
@@ -83,7 +108,26 @@ namespace Gamba.Prototyping.Transpiled
             return r;
         }
 
-        public static long mod_red(long n, long modulus) => n % modulus;
+        static long py_mod(long a, long b)
+        {
+            if (a < 0)
+                if (b < 0)
+                    return -(-a % -b);
+                else
+                    return -a % b - (-a % -b != 0 ? 1 : 0);
+            else if (b < 0)
+                return -(a % -b) + (-a % -b != 0 ? 1 : 0);
+            else
+                return a % b;
+        }
+
+        public static Context ctx = new();
+
+        public static long mod_red(long n, long modulus)
+        {
+            var mod = ctx.MkBVSMod(ctx.MkBV(n, 64), ctx.MkBV(modulus, 64)).Simplify() as BitVecNum;
+            return mod.Int64;
+        }
 
         public static bool do_children_match(List<Node> l1, List<Node> l2)
         {
@@ -100,9 +144,9 @@ namespace Gamba.Prototyping.Transpiled
             foreach (var child in l1)
             {
                 var found = false;
-                foreach (var i in oIndices)
+                foreach (var i in oIndices.ToList())
                 {
-                    if (child.Equals(l2[i]))
+                    if (child.equals(l2[i]))
                     {
                         oIndices.Remove(i);
                         found = true;
@@ -119,6 +163,11 @@ namespace Gamba.Prototyping.Transpiled
         public static string str(object obj)
         {
             return obj.ToString();
+        }
+
+        public override string ToString()
+        {
+            return to_string();
         }
 
         public enum NodeType
@@ -348,6 +397,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __reduce_constant()
         {
+            if (constant == 12)
+                Debugger.Break();
             this.constant = this.__get_reduced_constant(this.constant);
         }
 
@@ -535,11 +586,11 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool equals_negated(Node other)
         {
-            if ((((this.type) == (NodeType.NEGATION)) && (this.children[0].Equals(other))))
+            if ((((this.type) == (NodeType.NEGATION)) && (this.children[0].equals(other))))
             {
                 return true;
             }
-            if ((((other.type) == (NodeType.NEGATION)) && (other.children[0].Equals(this))))
+            if ((((other.type) == (NodeType.NEGATION)) && (other.children[0].equals(this))))
             {
                 return true;
             }
@@ -557,7 +608,7 @@ namespace Gamba.Prototyping.Transpiled
             if ((this.type) == (NodeType.NEGATION))
             {
                 node = other.__get_opt_transformed_negated();
-                return (((node) != (null)) && (node.Equals(this.children[0])));
+                return (((node) != (null)) && (node.equals(this.children[0])));
             }
             if ((this.type) == (NodeType.PRODUCT))
             {
@@ -574,7 +625,7 @@ namespace Gamba.Prototyping.Transpiled
                     return false;
                 }
                 node = other.__get_opt_negative_transformed_negated();
-                return (((node) != (null)) && (node.Equals(this.children[1].children[0])));
+                return (((node) != (null)) && (node.equals(this.children[1].children[0])));
             }
             return false;
         }
@@ -612,7 +663,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 foreach (var i in Range.Get(this.children.Count()))
                 {
-                    if (this.children[i].Equals(ochild))
+                    if (this.children[i].equals(ochild))
                     {
                         this.children.RemoveAt(i);
                         break;
@@ -918,7 +969,8 @@ namespace Gamba.Prototyping.Transpiled
         {
             var first = this.children[0];
             List<Node> toRemove = new() { };
-            foreach (var child in this.children.Slice(1, null, null))
+            var slice = this.children.Slice(1, null, null);
+            foreach (var child in slice)
             {
                 if ((child.type) == (NodeType.CONSTANT))
                 {
@@ -1126,6 +1178,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __flatten()
         {
+            if (this.ToString().Contains("2*(x|~y)-(x|y)-2*x-2-2*(x^y)+2+2*x+1+(x&y)-2*y+2+2*(x|y)-6-6*(x|~y)+4*(x&~y)"))
+                Debugger.Break();
             if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
                 this.__flatten_binary_generic();
@@ -1237,6 +1291,9 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __check_duplicate_children()
         {
+           // if (this.ToString() == "(-1^b)-5*b-13*(-1^b)")
+             //   Debugger.Break();
+
             if ((this.type) == (NodeType.INCL_DISJUNCTION))
             {
                 this.__remove_duplicate_children();
@@ -1271,7 +1328,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 foreach (var j in Range.Get(((this.children.Count()) - (1)), i, -(1)))
                 {
-                    if (this.children[i].Equals(this.children[j]))
+                    if (this.children[i].equals(this.children[j]))
                     {
                         this.children.RemoveAt(j);
                     }
@@ -1285,9 +1342,10 @@ namespace Gamba.Prototyping.Transpiled
             var i = 0;
             while ((i) < (this.children.Count()))
             {
+                var range = Range.Get(((this.children.Count()) - (1)), i, -(1));
                 foreach (var j in Range.Get(((this.children.Count()) - (1)), i, -(1)))
                 {
-                    if (this.children[i].Equals(this.children[j]))
+                    if (this.children[i].equals(this.children[j]))
                     {
                         this.children.RemoveAt(j);
                         this.children.RemoveAt(i);
@@ -1423,7 +1481,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return this.__equals_neglecting_constants_other_const(other);
             }
-            return this.Equals(other);
+            return this.equals(other);
         }
 
         public bool __equals_neglecting_constants_other_const(Node other)
@@ -1433,7 +1491,7 @@ namespace Gamba.Prototyping.Transpiled
             Assert.True((((this.type) != (NodeType.PRODUCT)) || ((this.children[0].type) != (NodeType.CONSTANT))));
             if ((other.children.Count()) == (2))
             {
-                return this.Equals(other.children[1]);
+                return this.equals(other.children[1]);
             }
             if ((this.type) != (NodeType.PRODUCT))
             {
@@ -1449,7 +1507,7 @@ namespace Gamba.Prototyping.Transpiled
                 var found = false;
                 foreach (var i in oIndices)
                 {
-                    if (child.Equals(other.children[i]))
+                    if (child.equals(other.children[i]))
                     {
                         oIndices.Remove(i);
                         found = true;
@@ -1475,7 +1533,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             if ((this.children.Count()) == (2))
             {
-                return this.children[1].Equals(other.children[1]);
+                return this.children[1].equals(other.children[1]);
             }
             List<int> oIndices = new(Range.Get(1, other.children.Count()));
             foreach (var child in this.children.Slice(1, null, null))
@@ -1483,7 +1541,7 @@ namespace Gamba.Prototyping.Transpiled
                 var found = false;
                 foreach (var i in oIndices)
                 {
-                    if (child.Equals(other.children[i]))
+                    if (child.equals(other.children[i]))
                     {
                         oIndices.Remove(i);
                         found = true;
@@ -1559,11 +1617,11 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     return this.children[0].__is_bitwise_inverse(other.children[0]);
                 }
-                return this.children[0].Equals(other);
+                return this.children[0].equals(other);
             }
             if ((other.type) == (NodeType.NEGATION))
             {
-                return this.Equals(other.children[0]);
+                return this.equals(other.children[0]);
             }
             var node = this.get_copy();
             if ((((node.type) == (NodeType.PRODUCT)) && ((node.children.Count()) == (2)) && ((node.children[0].type) == (NodeType.CONSTANT))))
@@ -1598,7 +1656,7 @@ namespace Gamba.Prototyping.Transpiled
                         return false;
                     }
                     node.children[1].__multiply_by_minus_one();
-                    return node.children[1].Equals(onode);
+                    return node.children[1].equals(onode);
                 }
                 foreach (var child in node.children)
                 {
@@ -1622,7 +1680,7 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     node.children.Insert(0, this.__new_constant_node(-(1)));
                 }
-                return node.Equals(onode);
+                return node.equals(onode);
             }
             if ((onode.type) != (NodeType.SUM))
             {
@@ -1633,7 +1691,7 @@ namespace Gamba.Prototyping.Transpiled
                 return false;
             }
             onode.children[1].__multiply_by_minus_one();
-            return onode.children[1].Equals(node);
+            return onode.children[1].equals(node);
         }
 
         public void __remove_trivial_nodes()
@@ -2270,17 +2328,28 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_beautify_constants_in_products()
         {
+            if (this.ToString() == "6*(-1^-6+7-7*b-12*~b-5*b^c)")
+                Debugger.Break();
+
+
             if ((this.type) != (NodeType.PRODUCT))
             {
+                if (this.ToString() == "6*(-1^-6+7-7*b-12*~b-5*b^c)")
+                    Debugger.Break();
                 return false;
             }
             if ((this.children[0].type) != (NodeType.CONSTANT))
             {
+                if (this.ToString() == "6*(-1^-6+7-7*b-12*~b-5*b^c)")
+                    Debugger.Break();
                 return false;
             }
             var e = trailing_zeros(this.children[0].constant);
+            //var e = this.children[0].constant.Shor
             if ((e) <= (0))
             {
+                if (this.ToString() == "6*(-1^-6+7-7*b-12*~b-5*b^c)")
+                    Debugger.Break();
                 return false;
             }
             var changed = false;
@@ -2292,11 +2361,17 @@ namespace Gamba.Prototyping.Transpiled
                     changed = true;
                 }
             }
+
+            if (this.ToString() == "6*(-1^-6+7-7*b-12*~b-5*b^c)")
+                Debugger.Break();
             return changed;
         }
 
         public bool __check_beautify_constants(long ee)
         {
+            if (ee > int.MaxValue)
+                throw new InvalidOperationException();
+
             var e = Convert.ToInt32(ee);
             List<NodeType> types = new() { NodeType.SUM, NodeType.PRODUCT };
             if (((this.__is_bitwise_op()) || (((types).Contains(this.type)))))
@@ -2319,6 +2394,10 @@ namespace Gamba.Prototyping.Transpiled
             var orig = this.constant;
             var mask = ((((-(1)) % (this.__modulus))) >> (e));
             var b = ((this.constant) & (((this.__modulus) >> (((e) + (1))))));
+            Console.WriteLine($"orig: {orig}");
+            Console.WriteLine($"mask: {mask}");
+            Console.WriteLine($"b: {b}");
+            Console.WriteLine($"popcnt cond: {(((popcount(this.constant)) > (1)) || ((b) == (1)))}");
             this.constant &= mask;
             if ((b) > (0))
             {
@@ -2569,14 +2648,14 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         var base2 = child2.children[0];
                         var exp2 = child2.children[1];
-                        if (base2.Equals(child))
+                        if (base2.equals(child))
                         {
                             exp2.__add_constant(1);
                             this.children.RemoveAt(i);
                             changed = true;
                             break;
                         }
-                        if ((((child.type) == (NodeType.POWER)) && (base2.Equals(child.children[0]))))
+                        if ((((child.type) == (NodeType.POWER)) && (base2.equals(child.children[0]))))
                         {
                             exp2.__add(child.children[1]);
                             this.children.RemoveAt(i);
@@ -2588,7 +2667,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         var _base = child.children[0];
                         var exp = child.children[1];
-                        if (_base.Equals(child2))
+                        if (_base.equals(child2))
                         {
                             exp.__add_constant(1);
                             this.children[j] = this.children[i];
@@ -2597,7 +2676,7 @@ namespace Gamba.Prototyping.Transpiled
                         }
                         break;
                     }
-                    if (child.Equals(child2))
+                    if (child.equals(child2))
                     {
                         List<Node> power_children = new() { child, this.__new_constant_node(2) };
                         this.children[j] = this.__new_node_with_children(NodeType.POWER, power_children);
@@ -2875,10 +2954,10 @@ namespace Gamba.Prototyping.Transpiled
                 var exp = this.children[1];
                 if ((((exp.type) == (NodeType.CONSTANT)) && (!(exp.__is_constant(0)))))
                 {
-                    return this.children[0].Equals(factor);
+                    return this.children[0].equals(factor);
                 }
             }
-            return this.Equals(factor);
+            return this.equals(factor);
         }
 
         public bool __has_factor_product(Node factor)
@@ -2886,7 +2965,7 @@ namespace Gamba.Prototyping.Transpiled
             Assert.True((this.type) == (NodeType.PRODUCT));
             foreach (var child in this.children)
             {
-                if (child.Equals(factor))
+                if (child.equals(factor))
                 {
                     return true;
                 }
@@ -2895,7 +2974,7 @@ namespace Gamba.Prototyping.Transpiled
                     var exp = child.children[1];
                     if ((((exp.type) == (NodeType.CONSTANT)) && (!(exp.__is_constant(0)))))
                     {
-                        if (child.children[0].Equals(factor))
+                        if (child.children[0].equals(factor))
                         {
                             return true;
                         }
@@ -2914,7 +2993,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var i in Range.Get(this.children.Count()))
             {
-                if (this.children[i].Equals(node))
+                if (this.children[i].equals(node))
                 {
                     return i;
                 }
@@ -2946,7 +3025,7 @@ namespace Gamba.Prototyping.Transpiled
                 this.__eliminate_factor_power(factor);
                 return;
             }
-            Assert.True(this.Equals(factor));
+            Assert.True(this.equals(factor));
             var c = this.__new_constant_node(1);
             this.copy(c);
         }
@@ -2957,7 +3036,7 @@ namespace Gamba.Prototyping.Transpiled
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
-                if (child.Equals(factor))
+                if (child.equals(factor))
                 {
                     this.children.RemoveAt(i);
                     if ((this.children.Count()) == (1))
@@ -2966,7 +3045,7 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     return;
                 }
-                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(factor))))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].equals(factor))))
                 {
                     child.__decrement_exponent();
                     return;
@@ -2978,12 +3057,12 @@ namespace Gamba.Prototyping.Transpiled
         public void __eliminate_factor_power(Node factor)
         {
             Assert.True((this.type) == (NodeType.POWER));
-            if (this.Equals(factor))
+            if (this.equals(factor))
             {
                 this.copy(this.__new_constant_node(1));
                 return;
             }
-            Assert.True(this.children[0].Equals(factor));
+            Assert.True(this.children[0].equals(factor));
             this.__decrement_exponent();
         }
 
@@ -3408,7 +3487,7 @@ namespace Gamba.Prototyping.Transpiled
                 foreach (var i in Range.Get(node.children.Count()))
                 {
                     var child = node.children[i];
-                    if (child.Equals(ochild))
+                    if (child.equals(ochild))
                     {
                         List<Node> power_children = new() { child, this.__new_constant_node(2) };
                         node.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
@@ -3445,7 +3524,7 @@ namespace Gamba.Prototyping.Transpiled
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
-                if (child.Equals(_base))
+                if (child.equals(_base))
                 {
                     this.children[i] = other.get_copy();
                     this.children[i].children[1].__add_constant(1);
@@ -3455,7 +3534,7 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     return;
                 }
-                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(_base))))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].equals(_base))))
                 {
                     child.children[1].__add(other.children[1]);
                     if (child.children[1].__is_constant(0))
@@ -3472,7 +3551,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             Assert.True((this.type) == (NodeType.POWER));
             Assert.True((other.type) == (NodeType.POWER));
-            if (this.children[0].Equals(other.children[0]))
+            if (this.children[0].equals(other.children[0]))
             {
                 var node = this.get_copy();
                 node.children[1].__add(other.children[1]);
@@ -3516,13 +3595,13 @@ namespace Gamba.Prototyping.Transpiled
             foreach (var i in Range.Get(node.children.Count()))
             {
                 var child = node.children[i];
-                if (child.Equals(other))
+                if (child.equals(other))
                 {
                     List<Node> power_children = new() { child.get_copy(), this.__new_constant_node(2) };
                     node.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
                     return node;
                 }
-                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(other))))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].equals(other))))
                 {
                     child.children[1].__add_constant(1);
                     if (child.children[1].__is_constant(0))
@@ -3545,7 +3624,7 @@ namespace Gamba.Prototyping.Transpiled
             Assert.True((this.type) == (NodeType.POWER));
             List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
             Assert.True(!((types).Contains(other.type)));
-            if (this.children[0].Equals(other))
+            if (this.children[0].equals(other))
             {
                 var node = this.get_copy();
                 node.children[1].__add_constant(1);
@@ -3564,7 +3643,7 @@ namespace Gamba.Prototyping.Transpiled
             List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
             Assert.True(!((types).Contains(this.type)));
             Assert.True(!((types).Contains(other.type)));
-            if (this.Equals(other))
+            if (this.equals(other))
             {
                 List<Node> power_children = new() { this.get_copy(), this.__new_constant_node(2) };
                 return this.__new_node_with_children(NodeType.POWER, power_children);
@@ -3673,7 +3752,7 @@ namespace Gamba.Prototyping.Transpiled
                 foreach (var i in Range.Get(this.children.Count()))
                 {
                     var child = this.children[i];
-                    if (child.Equals(ochild))
+                    if (child.equals(ochild))
                     {
                         List<Node> power_children = new() { child, this.__new_constant_node(2) };
                         this.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
@@ -3704,7 +3783,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             Assert.True((this.type) == (NodeType.POWER));
             Assert.True((other.type) == (NodeType.POWER));
-            if (this.children[0].Equals(other.children[0]))
+            if (this.children[0].equals(other.children[0]))
             {
                 this.children[1].__add(other.children[1]);
                 if (this.children[1].__is_constant(0))
@@ -3752,13 +3831,13 @@ namespace Gamba.Prototyping.Transpiled
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var child = this.children[i];
-                if (child.Equals(other))
+                if (child.equals(other))
                 {
                     List<Node> power_children = new() { child.__get_shallow_copy(), this.__new_constant_node(2) };
                     this.children[i] = this.__new_node_with_children(NodeType.POWER, power_children);
                     return;
                 }
-                if ((((child.type) == (NodeType.POWER)) && (child.children[0].Equals(other))))
+                if ((((child.type) == (NodeType.POWER)) && (child.children[0].equals(other))))
                 {
                     child.children[1].__add_constant(1);
                     if (child.children[1].__is_constant(0))
@@ -3780,7 +3859,7 @@ namespace Gamba.Prototyping.Transpiled
             Assert.True((this.type) == (NodeType.POWER));
             List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
             Assert.True(!((types).Contains(other.type)));
-            if (this.children[0].Equals(other))
+            if (this.children[0].equals(other))
             {
                 this.children[1].__add_constant(1);
                 if (this.children[1].__is_constant(0))
@@ -3798,7 +3877,7 @@ namespace Gamba.Prototyping.Transpiled
             List<NodeType> types = new() { NodeType.CONSTANT, NodeType.PRODUCT, NodeType.POWER };
             Assert.True(!((types).Contains(this.type)));
             Assert.True(!((types).Contains(other.type)));
-            if (this.Equals(other))
+            if (this.equals(other))
             {
                 List<Node> power_children = new() { this.__get_shallow_copy(), this.__new_constant_node(2) };
                 this.copy(this.__new_node_with_children(NodeType.POWER, power_children));
@@ -3976,7 +4055,7 @@ namespace Gamba.Prototyping.Transpiled
                 nodes.Add(this.__get_shallow_copy());
                 List<IndexWithMultitude> items = new() { new IndexWithMultitude(i, multitude) };
                 var set = new HashSet<IndexWithMultitude>(items);
-                nodesToTerms.Add((((nodes.Count()) - (1)), set ));
+                nodesToTerms.Add((((nodes.Count()) - (1)), set));
                 termsToNodes[i].Add(new IndexWithMultitude(((nodes.Count()) - (1)), multitude));
                 return;
             }
@@ -4193,7 +4272,7 @@ namespace Gamba.Prototyping.Transpiled
             var changed = false;
             foreach (var child in this.children)
             {
-                if (child.Equals(node))
+                if (child.equals(node))
                 {
                     child.copy(this.__new_constant_node(-(1)));
                     changed = true;
@@ -4246,7 +4325,7 @@ namespace Gamba.Prototyping.Transpiled
             var changed = false;
             foreach (var child in this.children)
             {
-                if (child.Equals(node))
+                if (child.equals(node))
                 {
                     child.copy(this.__new_constant_node(0));
                     changed = true;
@@ -4328,7 +4407,7 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 var node = child.children[0].get_copy();
                 node.__multiply_by_minus_one();
-                if (!(node.Equals(child.children[1])))
+                if (!(node.equals(child.children[1])))
                 {
                     continue;
                 }
@@ -4372,7 +4451,7 @@ namespace Gamba.Prototyping.Transpiled
                     var child2 = this.children[j];
                     var neg2 = child2.get_copy();
                     neg2.__multiply_by_minus_one();
-                    if (!(child1.Equals(neg2)))
+                    if (!(child1.equals(neg2)))
                     {
                         continue;
                     }
@@ -4388,7 +4467,7 @@ namespace Gamba.Prototyping.Transpiled
                             continue;
                         }
                         var child3 = this.children[k];
-                        if (((child3.Equals(double1)) || (child3.Equals(double2))))
+                        if (((child3.equals(double1)) || (child3.equals(double2))))
                         {
                             return true;
                         }
@@ -4467,7 +4546,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             var node0 = xor.children[0].get_copy();
             node0.__multiply_by_minus_one();
-            if (node0.Equals(xor.children[1]))
+            if (node0.equals(xor.children[1]))
             {
                 return node0;
             }
@@ -4581,7 +4660,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             var node0 = xor.children[0].get_copy();
             node0.__multiply_by_minus_one();
-            if (node0.Equals(xor.children[1]))
+            if (node0.equals(xor.children[1]))
             {
                 return node0;
             }
@@ -4643,14 +4722,14 @@ namespace Gamba.Prototyping.Transpiled
             }
             var neg = this.children[1].get_copy();
             neg.__multiply_by_minus_one();
-            return neg.Equals(this.children[0]);
+            return neg.equals(this.children[0]);
         }
 
         public bool __is_double(Node node)
         {
             var cpy = node.get_copy();
             cpy.__multiply(2);
-            return this.Equals(cpy);
+            return this.equals(cpy);
         }
 
         public bool __check_disj_xor_identity_rule()
@@ -4722,7 +4801,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             var neg = child.children[1].get_copy();
             neg.__multiply_by_minus_one();
-            return (neg.Equals(child.children[0])) ? child : null;
+            return (neg.equals(child.children[0])) ? child : null;
         }
 
         public bool __check_conj_neg_conj_identity_rule()
@@ -4755,7 +4834,7 @@ namespace Gamba.Prototyping.Transpiled
                     var child2 = this.children[j];
                     var neg = child2.get_copy();
                     neg.__multiply_by_minus_one();
-                    if (neg.Equals(node))
+                    if (neg.equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -4893,7 +4972,7 @@ namespace Gamba.Prototyping.Transpiled
                     var done = false;
                     foreach (var node in nodes)
                     {
-                        if (child2.Equals(node))
+                        if (child2.equals(node))
                         {
                             this.children.RemoveAt(i);
                             changed = true;
@@ -4940,7 +5019,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             var neg = bitw.children[1].get_copy();
             neg.__multiply_by_minus_one();
-            if (neg.Equals(bitw.children[0]))
+            if (neg.equals(bitw.children[0]))
             {
                 return new() { bitw.children[0], bitw.children[1] };
             }
@@ -4961,7 +5040,7 @@ namespace Gamba.Prototyping.Transpiled
                     return new() { neg };
                 }
             }
-            return (neg.Equals(bitw.children[0])) ? new() { bitw } : new() { };
+            return (neg.equals(bitw.children[0])) ? new() { bitw } : new() { };
         }
 
         public bool __check_disj_conj_identity_rule()
@@ -4994,7 +5073,7 @@ namespace Gamba.Prototyping.Transpiled
                     var child2 = this.children[j];
                     var neg = child2.get_copy();
                     neg.__multiply_by_minus_one();
-                    if (neg.Equals(node))
+                    if (neg.equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5042,7 +5121,7 @@ namespace Gamba.Prototyping.Transpiled
                 if ((node.type) == (NodeType.NEGATION))
                 {
                     neg = node.children[0];
-                    if (((neg.Equals(oDiv)) || (neg.Equals(oDivNeg))))
+                    if (((neg.equals(oDiv)) || (neg.equals(oDivNeg))))
                     {
                         return neg;
                     }
@@ -5050,7 +5129,7 @@ namespace Gamba.Prototyping.Transpiled
                 if ((oDiv.type) == (NodeType.NEGATION))
                 {
                     neg = oDiv.children[0];
-                    if (neg.Equals(node))
+                    if (neg.equals(node))
                     {
                         return oDiv;
                     }
@@ -5058,7 +5137,7 @@ namespace Gamba.Prototyping.Transpiled
                 if ((oDivNeg.type) == (NodeType.NEGATION))
                 {
                     neg = oDivNeg.children[0];
-                    if (neg.Equals(node))
+                    if (neg.equals(node))
                     {
                         return oDivNeg;
                     }
@@ -5066,7 +5145,7 @@ namespace Gamba.Prototyping.Transpiled
                 neg = node.__get_opt_transformed_negated();
                 if ((neg) != (null))
                 {
-                    if (((neg.Equals(oDiv)) || (neg.Equals(oDivNeg))))
+                    if (((neg.equals(oDiv)) || (neg.equals(oDivNeg))))
                     {
                         return neg;
                     }
@@ -5074,7 +5153,7 @@ namespace Gamba.Prototyping.Transpiled
                 neg = oDiv.__get_opt_transformed_negated();
                 if ((neg) != (null))
                 {
-                    if (neg.Equals(node))
+                    if (neg.equals(node))
                     {
                         return oDiv;
                     }
@@ -5082,7 +5161,7 @@ namespace Gamba.Prototyping.Transpiled
                 neg = oDivNeg.__get_opt_transformed_negated();
                 if ((neg) != (null))
                 {
-                    if (neg.Equals(node))
+                    if (neg.equals(node))
                     {
                         return oDivNeg;
                     }
@@ -5217,7 +5296,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (this.children[j].Equals(node))
+                    if (this.children[j].equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5298,7 +5377,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (this.children[j].Equals(node))
+                    if (this.children[j].equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5392,7 +5471,7 @@ namespace Gamba.Prototyping.Transpiled
                         continue;
                     }
                     var child2 = this.children[j];
-                    if (child2.Equals(node))
+                    if (child2.equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5501,7 +5580,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (this.children[j].Equals(node))
+                    if (this.children[j].equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5542,11 +5621,11 @@ namespace Gamba.Prototyping.Transpiled
                 var oidx = ((idx) == (1)) ? 0 : 1;
                 var neg = this.children[oidx].get_copy();
                 neg.__multiply_by_minus_one();
-                if (neg.Equals(child.children[0]))
+                if (neg.equals(child.children[0]))
                 {
                     return child.children[1];
                 }
-                if (neg.Equals(child.children[1]))
+                if (neg.equals(child.children[1]))
                 {
                     return child.children[0];
                 }
@@ -5581,7 +5660,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (this.children[j].Equals(node))
+                    if (this.children[j].equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5632,7 +5711,7 @@ namespace Gamba.Prototyping.Transpiled
                 var other = this.children[oidx];
                 foreach (var c in conj.children)
                 {
-                    if (c.Equals(other))
+                    if (c.equals(other))
                     {
                         return other;
                     }
@@ -5668,7 +5747,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (this.children[j].Equals(node))
+                    if (this.children[j].equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -5707,7 +5786,7 @@ namespace Gamba.Prototyping.Transpiled
                 oneg.__negate();
                 foreach (var c in child.children)
                 {
-                    if (c.Equals(oneg))
+                    if (c.equals(oneg))
                     {
                         return this.children[oidx];
                     }
@@ -5754,7 +5833,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (this.children[j].Equals(node1))
+                    if (this.children[j].equals(node1))
                     {
                         this.children[i].copy(node2);
                         changed = true;
@@ -5808,11 +5887,11 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 var oneg = child.children[oidx].get_copy();
                 oneg.__multiply_by_minus_one();
-                if (c.children[0].Equals(oneg))
+                if (c.children[0].equals(oneg))
                 {
                     return (c.children[1], c.children[0]);
                 }
-                if (c.children[1].Equals(oneg))
+                if (c.children[1].equals(oneg))
                 {
                     return (c.children[0], c.children[1]);
                 }
@@ -5849,7 +5928,7 @@ namespace Gamba.Prototyping.Transpiled
                         continue;
                     }
                     var child2 = this.children[j];
-                    if (child2.Equals(node))
+                    if (child2.equals(node))
                     {
                         this.children.RemoveAt(i);
                         changed = true;
@@ -6513,14 +6592,14 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     continue;
                 }
-                if (o.Equals(xor.children[0]))
+                if (o.equals(xor.children[0]))
                 {
                     List<Node> conj0_children = new() { o.__get_shallow_copy(), xor.children[1].get_copy() };
                     o = this.__new_node_with_children(NodeType.CONJUNCTION, conj0_children);
                 }
                 else
                 {
-                    if (o.Equals(xor.children[1]))
+                    if (o.equals(xor.children[1]))
                     {
                         List<Node> conj1_children = new() { o.__get_shallow_copy(), xor.children[0].get_copy() };
                         o = this.__new_node_with_children(NodeType.CONJUNCTION, conj1_children);
@@ -6537,13 +6616,13 @@ namespace Gamba.Prototyping.Transpiled
                             var found1 = false;
                             foreach (var ch in o.children)
                             {
-                                if (ch.Equals(xor.children[0]))
+                                if (ch.equals(xor.children[0]))
                                 {
                                     found0 = true;
                                 }
                                 else
                                 {
-                                    if (ch.Equals(xor.children[1]))
+                                    if (ch.equals(xor.children[1]))
                                     {
                                         found1 = true;
                                     }
@@ -6658,7 +6737,7 @@ namespace Gamba.Prototyping.Transpiled
             }
             var inv = node.children[0].get_copy();
             inv.__multiply_by_minus_one();
-            if (!(inv.Equals(node.children[1])))
+            if (!(inv.equals(node.children[1])))
             {
                 return false;
             }
@@ -7067,7 +7146,7 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         if ((first.children.Count()) == (2))
                         {
-                            if (!(node.children[1].Equals(first.children[1])))
+                            if (!(node.children[1].equals(first.children[1])))
                             {
                                 continue;
                             }
@@ -7782,9 +7861,9 @@ namespace Gamba.Prototyping.Transpiled
             {
                 var child = this.children[i];
                 var found = false;
-                foreach (var j in oIndices)
+                foreach (var j in oIndices.ToList())
                 {
-                    if (child.Equals(other.children[j]))
+                    if (child.equals(other.children[j]))
                     {
                         oIndices.Remove(j);
                         found = true;
@@ -8554,7 +8633,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var i in Range.Get(l.Count()))
             {
-                if (this.Equals(l[i]))
+                if (this.equals(l[i]))
                 {
                     return i;
                 }
@@ -8627,7 +8706,7 @@ namespace Gamba.Prototyping.Transpiled
         public (bool, bool) __try_substitute_node(Node node, string vname, bool onlyFull, bool inverse = false)
         {
             Node var = null;
-            if (this.Equals(node))
+            if (this.equals(node))
             {
                 var = this.__new_variable_node(vname);
                 if (inverse)
@@ -8693,7 +8772,7 @@ namespace Gamba.Prototyping.Transpiled
                 var found = false;
                 foreach (var c2 in common)
                 {
-                    if (c.Equals(c2))
+                    if (c.equals(c2))
                     {
                         common.Remove(c2);
                         found = true;
@@ -8719,7 +8798,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 foreach (var i in oIndices)
                 {
-                    if (child.Equals(other.children[i]))
+                    if (child.equals(other.children[i]))
                     {
                         oIndices.Remove(i);
                         common.Add(child);
@@ -8747,7 +8826,7 @@ namespace Gamba.Prototyping.Transpiled
             var found = false;
             foreach (var c in node.children)
             {
-                if (((!(found)) && (this.Equals(c))))
+                if (((!(found)) && (this.equals(c))))
                 {
                     found = true;
                     continue;

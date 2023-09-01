@@ -8,7 +8,7 @@ using System.Xml.XPath;
 
 namespace GambaDotnet
 {
-    public enum NodeType
+    public enum OldNodeType
     {
         CONSTANT = 0,
         VARIABLE = 1,
@@ -21,7 +21,7 @@ namespace GambaDotnet
         INCL_DISJUNCTION = 8,
     }
 
-    public enum NodeState
+    public enum OldNodeState
     {
         UNKNOWN = 0,
         BITWISE = 1,
@@ -30,15 +30,15 @@ namespace GambaDotnet
         MIXED = 4
     }
 
-    public class Node
+    public class OldNode
     {
-        public NodeType type;
+        public OldNodeType type;
 
         public long modulus;
 
         public bool modRed;
 
-        public List<Node> children;
+        public List<OldNode> children;
 
         public string vname = "";
 
@@ -46,7 +46,7 @@ namespace GambaDotnet
 
         public long constant = 0;
 
-        public NodeState state = NodeState.UNKNOWN;
+        public OldNodeState state = OldNodeState.UNKNOWN;
 
         public ulong linearEnd = 0;
 
@@ -60,14 +60,14 @@ namespace GambaDotnet
         /// <summary>
         /// # Returns true iff the given lists of children match.
         /// </summary>
-        public static bool do_children_match(List<Node> l1, List<Node> l2) => l1.Count == l2.Count && are_all_children_contained(l1, l2);
+        public static bool do_children_match(List<OldNode> l1, List<OldNode> l2) => l1.Count == l2.Count && are_all_children_contained(l1, l2);
 
         /// <summary>
         /// Returns true iff all children contained in l1 are also contained in l2.
         /// </summary>
-        public static bool are_all_children_contained(List<Node> l1, List<Node> l2) => l1.Except(l2).Any();
+        public static bool are_all_children_contained(List<OldNode> l1, List<OldNode> l2) => l1.Except(l2).Any();
 
-        public Node(NodeType type, long modulus, bool modRed, int childCount = 2)
+        public OldNode(OldNodeType type, long modulus, bool modRed, int childCount = 2)
         {
             this.type = type;
             this.modulus = modulus;
@@ -75,7 +75,7 @@ namespace GambaDotnet
             this.children = new(childCount);
         }
 
-        public Node(NodeType type, long modulus, bool modRed, params Node[] nodes)
+        public OldNode(OldNodeType type, long modulus, bool modRed, params OldNode[] nodes)
         {
             this.type = type;
             this.modulus = modulus;
@@ -94,37 +94,37 @@ namespace GambaDotnet
             else
                 Assert.True(end <= children.Count);
 
-            if (type == NodeType.CONSTANT)
+            if (type == OldNodeType.CONSTANT)
                 return ((long)constant).ToString();
-            if (type == NodeType.VARIABLE)
+            if (type == OldNodeType.VARIABLE)
                 return varNames == null ? vname : varNames[__vidx];
 
             switch(type)
             {
-                case NodeType.POWER:
+                case OldNodeType.POWER:
                     {
                         Assert.True(children.Count == 2);
                         var child1 = children[0];
                         var child2 = children[1];
-                        var retPower = child1.to_string(child1.type > NodeType.VARIABLE, -1, varNames) + "**" +
-                            child2.to_string(child2.type > NodeType.VARIABLE, -1, varNames);
+                        var retPower = child1.to_string(child1.type > OldNodeType.VARIABLE, -1, varNames) + "**" +
+                            child2.to_string(child2.type > OldNodeType.VARIABLE, -1, varNames);
                         return parenthesize(retPower);
                     }
-                case NodeType.NEGATION:
+                case OldNodeType.NEGATION:
                     {
                         Assert.True(children.Count == 1);
                         var child = children[0];
-                        var retNeg = "~" + child.to_string(child.type > NodeType.NEGATION, -1, varNames);
+                        var retNeg = "~" + child.to_string(child.type > OldNodeType.NEGATION, -1, varNames);
                         return parenthesize(retNeg);
                     }
-                case NodeType.PRODUCT:
+                case OldNodeType.PRODUCT:
                     {
                         Assert.True(children.Count > 0);
                         var child1 = children[0];
-                        var ret1 = child1.to_string(child1.type > NodeType.PRODUCT, -1, varNames);
+                        var ret1 = child1.to_string(child1.type > OldNodeType.PRODUCT, -1, varNames);
                         var ret = ret1;
                         foreach (var child in children.Skip(1))
-                            ret += "*" + child.to_string(child.type > NodeType.PRODUCT, -1, varNames);
+                            ret += "*" + child.to_string(child.type > OldNodeType.PRODUCT, -1, varNames);
                         // Rather than multiplying by -1, only use the minus and get rid
                         // of '1*'.
                         if (ret1 == "-1" && children.Count > 1 && end > 1)
@@ -132,14 +132,14 @@ namespace GambaDotnet
 
                         return parenthesize(ret);
                     }
-                case NodeType.SUM:
+                case OldNodeType.SUM:
                     {
                         Assert.True(children.Count > 0);
                         var child1 = children[0];
-                        var ret = child1.to_string(child1.type > NodeType.SUM, -1, varNames);
+                        var ret = child1.to_string(child1.type > OldNodeType.SUM, -1, varNames);
                         foreach (var child in children.Skip(1))
                         {
-                            var s = child.to_string(child.type > NodeType.SUM, -1, varNames);
+                            var s = child.to_string(child.type > OldNodeType.SUM, -1, varNames);
                             if (s[0] != '-')
                                 ret += "+";
                             ret += s;
@@ -147,14 +147,14 @@ namespace GambaDotnet
 
                         return parenthesize(ret);
                     }
-                case NodeType.CONJUNCTION:
-                case NodeType.EXCL_DISJUNCTION:
-                case NodeType.INCL_DISJUNCTION:
+                case OldNodeType.CONJUNCTION:
+                case OldNodeType.EXCL_DISJUNCTION:
+                case OldNodeType.INCL_DISJUNCTION:
                     {
                         var op = "&";
-                        if (type == NodeType.EXCL_DISJUNCTION)
+                        if (type == OldNodeType.EXCL_DISJUNCTION)
                             op = "^";
-                        else if(type == NodeType.INCL_DISJUNCTION)
+                        else if(type == OldNodeType.INCL_DISJUNCTION)
                                 op = "|";
 
                         Assert.True(children.Count > 0);

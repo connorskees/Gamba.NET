@@ -1,4 +1,5 @@
 ﻿using Gamba.Prototyping.Extensions;
+using Gamba.Prototyping.Transpiled;
 using GambaDotnet;
 using Microsoft.Z3;
 using System;
@@ -13,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using static Gamba.Prototyping.Transpiled.Node;
 
 namespace Gamba.Prototyping.Transpiler
 {
@@ -467,7 +469,8 @@ namespace Gamba.Prototyping.Transpiler
 
         public long __get_constant(long start, int _base)
         {
-            return Convert.ToInt32(this.__expr.Slice(start, this.__idx, null).rstrip(), _base);
+            var slice = this.__expr.Slice(start, this.__idx, null).rstrip();
+            return Convert.ToInt64(slice, _base);
         }
 
         public string __get(bool skipSpace = true)

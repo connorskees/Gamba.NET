@@ -1,4 +1,5 @@
 ﻿using Antlr4.Runtime.Misc;
+using Gamba.Prototyping.Transpiled;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -7,6 +8,7 @@ using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
+using static Gamba.Prototyping.Transpiled.Node;
 
 namespace GambaDotnet.Parsing
 {
@@ -131,6 +133,15 @@ namespace GambaDotnet.Parsing
             return node;
         }
 
-        private Node CreateNode(NodeType type, params Node[] children) => new Node(type, modulus, modRed, children);
+        private Node CreateNode(NodeType type, params Node[] children)
+        {
+            var node = new Node(type, modulus, modRed);
+            foreach( var child in children )
+            {
+                node.children.Add(child);
+            }
+
+            return node;
+        }
     }
 }

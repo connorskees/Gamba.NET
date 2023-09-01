@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,17 +11,34 @@ namespace Gamba.Prototyping.Extensions
     {
         public static string Slice(this string input, int? lower, int? upper, int? step)
         {
-            return null;
+            if(step != null)
+                throw new InvalidOperationException();
+            var substr = upper == null ? input.Substring(lower.Value) : input.Substring(lower.Value, upper.Value - lower.Value);
+            return substr;
         }
 
-        public static string Slice(this string input, long? lower, long? upper, long? step)
-        {
-            return null;
-        }
+        public static string Slice(this string input, long? lower, long? upper, long? step) => Slice(input, (int?)lower, (int?)upper, (int?)step);
 
         public static List<T> Slice<T>(this IList<T> input, int? lower, int? upper, int? step)
         {
-            return null;
+            /*
+            if (step != null)
+                throw new InvalidOperationException();
+            if (upper != null)
+                throw new InvalidOperationException();
+            */
+
+            var startIndex = lower.HasValue ? lower.Value : 0;
+            var endIndex = upper.HasValue ? upper.Value : input.Count;
+            var stepCount = step.HasValue ? step.Value : 1;
+
+            var output = new List<T>();
+            for(int i = startIndex; i < endIndex; i += stepCount)
+            {
+                output.Add(input[i]);
+            }
+
+            return output;
         }
 
         public static string rstrip(this string input) => new string(input.ToCharArray().Where(c => !Char.IsWhiteSpace(c)).ToArray());
