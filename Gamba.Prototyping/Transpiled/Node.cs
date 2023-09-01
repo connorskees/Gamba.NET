@@ -1,4 +1,5 @@
-﻿using Gamba.Prototyping.Extensions;
+﻿using Antlr4.Runtime.Dfa;
+using Gamba.Prototyping.Extensions;
 using GambaDotnet;
 using System;
 using System.Collections.Generic;
@@ -83,6 +84,37 @@ namespace Gamba.Prototyping.Transpiled
         }
 
         public static long mod_red(long n, long modulus) => n % modulus;
+
+        public static bool do_children_match(List<Node> l1, List<Node> l2)
+        {
+            if ((l1.Count()) != (l2.Count()))
+            {
+                return false;
+            }
+            return are_all_children_contained(l1, l2);
+        }
+
+        public static bool are_all_children_contained(List<Node> l1, List<Node> l2)
+        {
+            List<int> oIndices = new(Range.Get(l2.Count()));
+            foreach (var child in l1)
+            {
+                var found = false;
+                foreach (var i in oIndices)
+                {
+                    if (child.Equals(l2[i]))
+                    {
+                        oIndices.Remove(i);
+                        found = true;
+                    }
+                }
+                if (!(found))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         public static string str(object obj)
         {
@@ -1176,7 +1208,8 @@ namespace Gamba.Prototyping.Transpiled
                     }
                     child.children.RemoveAt(0);
                 }
-                this.children.Slice(i, i, null) = child.children;
+                //this.children.Slice(i, i, null) = child.children;
+                child.children.InsertRange(i, child.children);
                 i += child.children.Count();
             }
             if (!(changed))
@@ -1444,7 +1477,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return this.children[1].Equals(other.children[1]);
             }
-            var oIndices = new(Range.Get(1, other.children.Count()));
+            List<int> oIndices = new(Range.Get(1, other.children.Count()));
             foreach (var child in this.children.Slice(1, null, null))
             {
                 var found = false;
@@ -1845,7 +1878,8 @@ namespace Gamba.Prototyping.Transpiled
             {
                 if ((this.children[0].type) == (NodeType.PRODUCT))
                 {
-                    this.children.Slice(1, 1, null) = this.children[0].children.Slice(1, null, null);
+                    //this.children.Slice(1, 1, null) = this.children[0].children.Slice(1, null, null);
+                    children.InsertRange(1, this.children[0].children.Slice(1, null, null));
                     this.children[0] = this.children[0].children[0];
                 }
                 if ((this.children[0].type) == (NodeType.CONSTANT))
@@ -2244,7 +2278,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            trailing_zeros(this.children[0].constant);
+            var e = trailing_zeros(this.children[0].constant);
             if ((e) <= (0))
             {
                 return false;
@@ -2261,7 +2295,7 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
-        public bool __check_beautify_constants(int ee)
+        public bool __check_beautify_constants(long ee)
         {
             var e = Convert.ToInt32(ee);
             List<NodeType> types = new() { NodeType.SUM, NodeType.PRODUCT };
@@ -2741,7 +2775,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            List<Node> prod_children = factors.copy();
+            List<Node> prod_children = factors.ToList();
             prod_children.Add(this.get_copy());
             var prod = this.__new_node_with_children(NodeType.PRODUCT, prod_children);
             this.copy(prod);
@@ -3855,7 +3889,7 @@ namespace Gamba.Prototyping.Transpiled
             var (nodes, nodesToTerms, termsToNodes) = this.__collect_all_factors_of_sum();
             var nodesTriviality = this.__determine_nodes_triviality(nodes);
             var nodesOrder = this.__determine_nodes_order(nodes);
-            var partition = Batch(new() { }, new() { }, set(Range.Get(this.children.Count())), nodesToTerms, termsToNodes, nodesTriviality, nodesOrder);
+            var partition = new Batch(new() { }, new() { }, Range.Get(this.children.Count()).ToHashSet(), nodesToTerms, termsToNodes, nodesTriviality, nodesOrder);
             if (partition.is_trivial())
             {
                 return false;
@@ -3864,14 +3898,15 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public (List<Node>, List<object>, List<HashSet<IndexWithMultitude>>) __collect_all_factors_of_sum()
+        public (List<Node>, List<(int, HashSet<IndexWithMultitude>)>, List<HashSet<IndexWithMultitude>>) __collect_all_factors_of_sum()
         {
-            var nodes = new() { };
-            var nodesToTerms = new() { };
-            var termsToNodes = new() { };
+            List<Node> nodes = new() { };
+            List<(int, HashSet<IndexWithMultitude>)> nodesToTerms = new() { };
+            List<HashSet<IndexWithMultitude>> termsToNodes = new() { };
             foreach (var i in Range.Get(this.children.Count()))
             {
-                termsToNodes.Add(set(new() { }));
+                HashSet<IndexWithMultitude> set = new HashSet<IndexWithMultitude>() { };
+                termsToNodes.Add(set);
                 var term = this.children[i];
                 term.__collect_factors(i, 1, nodes, nodesToTerms, termsToNodes);
             }
@@ -3879,7 +3914,7 @@ namespace Gamba.Prototyping.Transpiled
             return (nodes, nodesToTerms, termsToNodes);
         }
 
-        public void __collect_factors(int i, long multitude, List<Node> nodes, List<object> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
+        public void __collect_factors(int i, long multitude, List<Node> nodes, List<(int, HashSet<IndexWithMultitude>)> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
             if ((this.type) == (NodeType.PRODUCT))
             {
@@ -3904,7 +3939,7 @@ namespace Gamba.Prototyping.Transpiled
             }
         }
 
-        public void __collect_factors_of_power(int i, long multitude, List<Node> nodes, List<object> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
+        public void __collect_factors_of_power(int i, long multitude, List<Node> nodes, List<(int, HashSet<IndexWithMultitude>)> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
             Assert.True((this.type) == (NodeType.POWER));
             var _base = this.children[0];
@@ -3933,18 +3968,20 @@ namespace Gamba.Prototyping.Transpiled
             this.__check_store_factor(i, multitude, nodes, nodesToTerms, termsToNodes);
         }
 
-        public void __check_store_factor(int i, long multitude, List<Node> nodes, List<object> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
+        public void __check_store_factor(int i, long multitude, List<Node> nodes, List<(int, HashSet<IndexWithMultitude>)> nodesToTerms, List<HashSet<IndexWithMultitude>> termsToNodes)
         {
             var idx = this.__get_index_in_list(nodes);
             if ((idx) == (null))
             {
                 nodes.Add(this.__get_shallow_copy());
-                nodesToTerms.Add(new() { ((nodes.Count()) - (1)), set(new() { IndexWithMultitude(i, multitude) }) });
-                termsToNodes[i].add(IndexWithMultitude(((nodes.Count()) - (1)), multitude));
+                List<IndexWithMultitude> items = new() { new IndexWithMultitude(i, multitude) };
+                var set = new HashSet<IndexWithMultitude>(items);
+                nodesToTerms.Add((((nodes.Count()) - (1)), set ));
+                termsToNodes[i].Add(new IndexWithMultitude(((nodes.Count()) - (1)), multitude));
                 return;
             }
-            var ntt = nodesToTerms[idx][1];
-            var res = ntt.Where(p => (p.idx) == (i)).Select(p => p);
+            var ntt = nodesToTerms[idx].Item2;
+            var res = ntt.Where(p => (p.idx) == (i)).Select(p => p).ToList();
             Assert.True((res.Count()) <= (1));
             if ((res.Count()) == (1))
             {
@@ -3952,10 +3989,10 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                ntt.add(IndexWithMultitude(i, multitude));
+                ntt.Add(new IndexWithMultitude(i, multitude));
             }
             var ttn = termsToNodes[i];
-            var res2 = ttn.Where(p => (p.idx) == (idx)).Select(p => p);
+            var res2 = ttn.Where(p => (p.idx) == (idx)).Select(p => p).ToList();
             Assert.True((res2.Count()) <= (1));
             Assert.True(((res2.Count()) == (1)) == ((res.Count()) == (1)));
             if ((res2.Count()) == (1))
@@ -3964,20 +4001,22 @@ namespace Gamba.Prototyping.Transpiled
             }
             else
             {
-                ttn.add(IndexWithMultitude(idx, multitude));
+                ttn.Add(new IndexWithMultitude(idx, multitude));
             }
         }
 
         public List<bool> __determine_nodes_triviality(List<Node> nodes)
         {
-            return nodes.Where(n => ).Select(x => n.__is_trivial_in_factorization());
+            return nodes.Where(n => true).Select(n => n.__is_trivial_in_factorization()).ToList();
         }
 
         public List<int> __determine_nodes_order(List<Node> nodes)
         {
-            var enumNodes = new(enumerate(nodes));
-            enumNodes.Sort();
-            return enumNodes.Where(p => ).Select(x => p[0]);
+            //var enumNodes = new(enumerate(nodes));
+            //enumNodes.Sort();
+            var enumNodes = nodes.Enumerate().ToList();
+            enumNodes.OrderBy(x => x.Item1);
+            return enumNodes.Where(p => true).Select(p => p.Item1).ToList();
         }
 
         public bool __is_trivial_in_factorization()
@@ -4047,11 +4086,11 @@ namespace Gamba.Prototyping.Transpiled
             return prod;
         }
 
-        public void __reduce_node_set(HashSet<IndexWithMultitude> indicesWithMultitudes, int l1, int l2)
+        public void __reduce_node_set(HashSet<IndexWithMultitude> indicesWithMultitudes, List<IndexWithMultitude> l1, List<IndexWithMultitude> l2)
         {
-            foreach (var p in ((l1) + (l2)))
+            foreach (var p in l1.Concat(l2).ToList())
             {
-                var m = indicesWithMultitudes.Where(q => (q.idx) == (p.idx)).Select(q => q);
+                var m = indicesWithMultitudes.Where(q => (q.idx) == (p.idx)).Select(q => q).ToList();
                 Assert.True((m.Count()) == (1));
                 Assert.True((m[0].multitude) >= (p.multitude));
                 m[0].multitude -= p.multitude;
@@ -6650,9 +6689,9 @@ namespace Gamba.Prototyping.Transpiled
             long _const = 0;
             foreach (var pair in l)
             {
-                var factor = pair[0];
-                var sublist = pair[1];
-                var done = sublist.Where(x => ).Select(x => false);
+                var factor = pair.Item1;
+                var sublist = pair.Item2;
+                var done = sublist.Where(x => true).Select(x => false).ToList();
                 foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
                     if (done[i])
@@ -6720,10 +6759,10 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public List<(int, List<int>)> __collect_indices_of_bitw_with_constants_in_sum(NodeType expType)
+        public List<(long, List<int>)> __collect_indices_of_bitw_with_constants_in_sum(NodeType expType)
         {
             Assert.True((this.type) == (NodeType.SUM));
-            var l = new() { };
+            List<(long, List<int>)> l = new() { };
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_with_constant(expType);
@@ -6735,11 +6774,11 @@ namespace Gamba.Prototyping.Transpiled
                 var found = false;
                 foreach (var pair in l)
                 {
-                    if ((factor) != (pair[0]))
+                    if ((factor) != (pair.Item1))
                     {
                         continue;
                     }
-                    var sublist = pair[1];
+                    var sublist = pair.Item2;
                     var firstIdx = sublist[0];
                     var first = this.children[firstIdx];
                     if ((first.type) == (NodeType.PRODUCT))
@@ -6761,7 +6800,7 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if (!(found))
                 {
-                    l.Add(new() { factor, new() { i } });
+                    l.Add((factor, new() { i }));
                 }
             }
             return l;
@@ -6769,8 +6808,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public (NullableI64, Node) __get_factor_of_bitw_with_constant(NodeType? expType = null)
         {
-            var factor = null;
-            var node = null;
+            NullableI64 factor = null;
+            Node node = null;
             if (this.__is_bitwise_binop())
             {
                 if ((((expType) != (null)) && ((this.type) != (expType))))
@@ -6834,7 +6873,8 @@ namespace Gamba.Prototyping.Transpiled
                 return false;
             }
             var changed = false;
-            foreach (var conj in new() { true, false })
+            List<bool> bools = new() { true, false };
+            foreach (var conj in bools)
             {
                 if (this.__check_bitw_pairs_with_constants_impl(conj))
                 {
@@ -6857,12 +6897,12 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return false;
             }
-            List<Node> toRemove = new() { };
+            List<int> toRemove = new() { };
             var changed = false;
             foreach (var pair in l)
             {
-                var factor = pair[0];
-                var sublist = pair[1];
+                var factor = pair.Item1;
+                var sublist = pair.Item2;
                 foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
                     foreach (var j in Range.Get(0, i))
@@ -6966,7 +7006,8 @@ namespace Gamba.Prototyping.Transpiled
                         {
                             toRemove.Add(secIdx);
                         }
-                        sublist[j][0] = bitwFactor;
+                        //sublist[j][0] = bitwFactor;
+                        sublist[j] = (bitwFactor, sublist[j].Item2);
                         changed = true;
                         break;
                     }
@@ -7000,10 +7041,10 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public List<List<int>> __collect_all_indices_of_bitw_with_constants()
+        public List<List<(long, int)>> __collect_all_indices_of_bitw_with_constants()
         {
             Assert.True((this.type) == (NodeType.SUM));
-            var l = new() { };
+            List<List<(long, int)>> l = new() { };
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_with_constant();
@@ -7017,7 +7058,7 @@ namespace Gamba.Prototyping.Transpiled
                 foreach (var sublist in l)
                 {
                     var firstIdx = sublist[0];
-                    var first = this.children[firstIdx[1]];
+                    var first = this.children[firstIdx.Item2];
                     if ((first.type) == (NodeType.PRODUCT))
                     {
                         first = first.children[1];
@@ -7066,13 +7107,13 @@ namespace Gamba.Prototyping.Transpiled
                             }
                         }
                     }
-                    sublist.Add(new() { factor, i });
+                    sublist.Add((factor, i));
                     found = true;
                     break;
                 }
                 if (!(found))
                 {
-                    l.Add(new() { new() { factor, i } });
+                    l.Add(new() { (factor, i) });
                 }
             }
             return l;
@@ -7139,7 +7180,7 @@ namespace Gamba.Prototyping.Transpiled
             return fac1;
         }
 
-        public (i64, bool, i64) __merge_bitwise_terms(int firstIdx, int secIdx, Node first, Node second, long factor, long firstConst, long secConst)
+        public (long, bool, long) __merge_bitwise_terms(int firstIdx, int secIdx, Node first, Node second, long factor, long firstConst, long secConst)
         {
             var (bitwFactor, add, opfac) = this.__merge_bitwise_terms_and_get_opfactor(firstIdx, secIdx, first, second, factor, firstConst, secConst);
             if ((opfac) == (0))
@@ -7314,7 +7355,7 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public NullableI64 __try_merge_bitwise_with_constants_with_2_others(List<List<int>> sublist, int i, List<int> toRemove)
+        public NullableI64 __try_merge_bitwise_with_constants_with_2_others(List<(long, int)> sublist, int i, List<int> toRemove)
         {
             foreach (var j in Range.Get(1, i))
             {
@@ -7330,7 +7371,7 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public NullableI64 __try_merge_triple_bitwise_with_constants(List<List<int>> sublist, int i, int j, int k, List<int> toRemove)
+        public NullableI64 __try_merge_triple_bitwise_with_constants(List<(long, int)> sublist, int i, int j, int k, List<int> toRemove)
         {
             List<List<int>> perms = new() { new() { i, j, k }, new() { j, i, k }, new() { k, i, j } };
             foreach (var perm in perms)
@@ -7366,7 +7407,10 @@ namespace Gamba.Prototyping.Transpiled
                 if ((perm[0]) != (i))
                 {
                     Assert.True((perm[1]) == (i));
-                    var(sublist[perm[0]], sublist[perm[1]]) = (sublist[perm[1]], sublist[perm[0]]);
+                    //var(sublist[perm[0]], sublist[perm[1]]) = (sublist[perm[1]], sublist[perm[0]]);
+                    var oldPerm0 = sublist[perm[0]];
+                    sublist[perm[0]] = sublist[perm[1]];
+                    sublist[perm[1]] = oldPerm0;
                     i1 = perm[0];
                 }
                 var (bitwFactor1, add1, opfac1) = this.__merge_bitwise_terms_and_get_opfactor(firstIdx, mainIdx, first, main, factor1, firstConst, mainConst);
@@ -7384,8 +7428,10 @@ namespace Gamba.Prototyping.Transpiled
                         this.children[mainIdx].__multiply(opfac);
                     }
                 }
-                sublist[i1][0] = bitwFactor1;
-                sublist[perm[2]][0] = bitwFactor2;
+                //sublist[i1][0] = bitwFactor1;
+                sublist[i1] = (bitwFactor1, sublist[i1].Item2);
+                //sublist[perm[2]][0] = bitwFactor2;
+                sublist[perm[2]] = (bitwFactor2, sublist[perm[2]].Item2);
                 return ((add1) + (add2));
             }
             return null;
@@ -7502,9 +7548,9 @@ namespace Gamba.Prototyping.Transpiled
             long _const = 0;
             foreach (var pair in l)
             {
-                var factor = pair[0];
-                var sublist = pair[2];
-                var done = sublist.Where(x => ).Select(x => false);
+                var factor = pair.Item1;
+                var sublist = pair.Item3;
+                var done = sublist.Where(x => true).Select(x => false).ToList();
                 foreach (var i in Range.Get(((sublist.Count()) - (1)), 0, -(1)))
                 {
                     if (done[i])
@@ -7536,11 +7582,11 @@ namespace Gamba.Prototyping.Transpiled
                         {
                             continue;
                         }
-                        if (!(first.children[indices[0]].equals_negated(second.children[indices[1]])))
+                        if (!(first.children[indices.Value.Item1].equals_negated(second.children[indices.Value.Item2])))
                         {
                             continue;
                         }
-                        var (removeFirst, removeSec, add) = this.__merge_inverse_bitwise_terms(firstIdx, secIdx, first, second, factor, indices);
+                        var (removeFirst, removeSec, add) = this.__merge_inverse_bitwise_terms(firstIdx, secIdx, first, second, factor, indices.Value);
                         _const += add;
                         if (removeFirst)
                         {
@@ -7592,10 +7638,10 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public List<object> __collect_indices_of_bitw_without_constants_in_sum(NodeType expType)
+        public List<(long, int, List<int>)> __collect_indices_of_bitw_without_constants_in_sum(NodeType expType)
         {
             Assert.True((this.type) == (NodeType.SUM));
-            var l = new() { };
+            List<(long, int, List<int>)> l = new() { };
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_without_constant(expType);
@@ -7608,21 +7654,21 @@ namespace Gamba.Prototyping.Transpiled
                 var found = false;
                 foreach (var triple in l)
                 {
-                    if ((factor) != (triple[0]))
+                    if ((factor) != (triple.Item1))
                     {
                         continue;
                     }
-                    if ((opCnt) != (triple[1]))
+                    if ((opCnt) != (triple.Item2))
                     {
                         continue;
                     }
-                    triple[2].Add(i);
+                    triple.Item3.Add(i);
                     found = true;
                     break;
                 }
                 if (!(found))
                 {
-                    l.Add(new() { factor, opCnt, new() { i } });
+                    l.Add((factor, opCnt, new() { i }));
                 }
             }
             return l;
@@ -7723,7 +7769,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 return null;
             }
-            return (indices[1], indices[0]);
+            return (indices.Value.Item2, indices.Value.Item1);
         }
 
         public (int, int)? __get_only_differing_child_indices_same_len(Node other)
@@ -7782,7 +7828,9 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     continue;
                 }
-                if (!(do_children_match(this.children[oi].children, ((other.children.Slice(null, idx, null)) + (other.children.Slice(((idx) + (1)), null, null))))))
+                var op1 = (other.children.Slice(null, idx, null));
+                var op2 = (other.children.Slice(((idx) + (1)), null, null));
+                if (!(do_children_match(this.children[oi].children, (op1.Concat(op2).ToList()))))
                 {
                     continue;
                 }
@@ -7791,7 +7839,7 @@ namespace Gamba.Prototyping.Transpiled
             return null;
         }
 
-        public (bool, bool, (long, long, long)) __merge_inverse_bitwise_terms(int firstIdx, int secIdx, Node first, Node second, long factor, List<int> indices)
+        public (bool, bool, long) __merge_inverse_bitwise_terms(int firstIdx, int secIdx, Node first, Node second, long factor, (int, int) indices)
         {
             var type1 = first.type;
             var type2 = second.type;
@@ -7806,13 +7854,13 @@ namespace Gamba.Prototyping.Transpiled
                 if ((first.children.Count()) == (2))
                 {
                     List<int> nums = new() { 0, 1 };
-                    Assert.True(((nums).Contains(indices[0])));
-                    var oIdx = ((indices[0]) == (1)) ? 0 : 1;
+                    Assert.True(((nums).Contains(indices.Item1)));
+                    var oIdx = ((indices.Item1) == (1)) ? 0 : 1;
                     first.copy(first.children[oIdx]);
                 }
                 else
                 {
-                    first.children.RemoveAt(indices[0]);
+                    first.children.RemoveAt(indices.Item1);
                 }
                 if (hasFactor)
                 {
@@ -7841,7 +7889,7 @@ namespace Gamba.Prototyping.Transpiled
             if (!(removeSecond))
             {
                 hasFactor = (this.children[secIdx].type) == (NodeType.PRODUCT);
-                second.copy(second.children[indices[1]]);
+                second.copy(second.children[indices.Item2]);
                 if (this.__must_invert_at_merging_inverse_bitwise(type1, type2))
                 {
                     second.__negate();
@@ -7935,7 +7983,7 @@ namespace Gamba.Prototyping.Transpiled
                 return false;
             }
             List<int> toRemove = new() { };
-            var done = l.Where(x => ).Select(x => false);
+            var done = l.Where(x => true).Select(x => false).ToList();
             var changed = false;
             long _const = 0;
             foreach (var i in Range.Get(((l.Count()) - (1)), 0, -(1)))
@@ -7976,11 +8024,11 @@ namespace Gamba.Prototyping.Transpiled
                     {
                         continue;
                     }
-                    if (!(first.children[indices[0]].equals_negated(second.children[indices[1]])))
+                    if (!(first.children[indices.Value.Item1].equals_negated(second.children[indices.Value.Item2])))
                     {
                         continue;
                     }
-                    var (removeFirst, removeSec, add) = this.__merge_inverse_bitwise_terms(firstIdx, secIdx, first, second, factor, indices);
+                    var (removeFirst, removeSec, add) = this.__merge_inverse_bitwise_terms(firstIdx, secIdx, first, second, factor, indices.Value);
                     _const += add;
                     if (removeFirst)
                     {
@@ -8031,10 +8079,10 @@ namespace Gamba.Prototyping.Transpiled
             return true;
         }
 
-        public List<object> __collect_all_indices_of_bitw_without_constants()
+        public List<(long, int)> __collect_all_indices_of_bitw_without_constants()
         {
             Assert.True((this.type) == (NodeType.SUM));
-            var l = new() { };
+            List<(long, int)> l = new() { };
             foreach (var i in Range.Get(this.children.Count()))
             {
                 var (factor, node) = this.children[i].__get_factor_of_bitw_without_constant();
@@ -8043,7 +8091,7 @@ namespace Gamba.Prototyping.Transpiled
                 {
                     continue;
                 }
-                l.Add(new() { factor, i });
+                l.Add((factor, i));
             }
             return l;
         }
@@ -8169,8 +8217,8 @@ namespace Gamba.Prototyping.Transpiled
                         {
                             continue;
                         }
-                        conj = conj.children[indices[0]];
-                        disj = disj.children[indices[1]];
+                        conj = conj.children[indices.Value.Item1];
+                        disj = disj.children[indices.Value.Item2];
                         if ((conj.type) != (NodeType.CONJUNCTION))
                         {
                             continue;
@@ -8528,9 +8576,11 @@ namespace Gamba.Prototyping.Transpiled
                 inv = node.get_copy();
                 inv.__multiply_by_minus_one();
             }
+            bool ch = false;
+            bool done = false;
             foreach (var child in this.children)
             {
-                var (ch, done) = child.__try_substitute_node(node, vname, bitwise);
+                (ch, done) = child.__try_substitute_node(node, vname, bitwise);
                 if (ch)
                 {
                     changed = true;
@@ -8542,7 +8592,7 @@ namespace Gamba.Prototyping.Transpiled
                 if (((!(bitwise)) && (!(onlyFullMatch)) && (withMod)))
                 {
                     Assert.True((inv) != (null));
-                    var (ch, done) = child.__try_substitute_node(inv, vname, false, true);
+                    (ch, done) = child.__try_substitute_node(inv, vname, false, true);
                     if (ch)
                     {
                         changed = true;
@@ -8664,7 +8714,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             Assert.True((other.type) == (this.type));
             List<Node> common = new() { };
-            var oIndices = new(Range.Get(other.children.Count()));
+            List<int> oIndices = new(Range.Get(other.children.Count()));
             foreach (var child in this.children)
             {
                 foreach (var i in oIndices)
@@ -8960,7 +9010,7 @@ namespace Gamba.Prototyping.Transpiled
         {
             foreach (var c in this.children)
             {
-                c.Sort();
+                c.sort();
             }
             this.__reorder_variables();
         }
@@ -8998,7 +9048,8 @@ namespace Gamba.Prototyping.Transpiled
                 }
                 if ((vn1) != (vn2))
                 {
-                    return (vn1) < (vn2);
+                    //return (vn1) < (vn2);
+                    return String.Compare(vn1, vn2) < 0;
                 }
                 return (this.type) == (NodeType.VARIABLE);
             }
@@ -9062,6 +9113,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public void print(int level = 0)
         {
+            /*
             var indent = ((2) * (level));
             var prefix = ((((((((indent) * (" "))) + ("["))) + (str(level)))) + ("] "));
             if ((this.type) == (NodeType.CONSTANT))
@@ -9079,10 +9131,9 @@ namespace Gamba.Prototyping.Transpiled
             {
                 c.print(((level) + (1)));
             }
+            */
+            throw new InvalidOperationException();
         }
 
     }
-
-
-
 }

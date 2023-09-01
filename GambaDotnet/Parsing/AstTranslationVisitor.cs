@@ -12,11 +12,11 @@ namespace GambaDotnet.Parsing
 {
     public class AstTranslationVisitor : ExprBaseVisitor<Node>
     {
-        private readonly ulong modulus;
+        private readonly long modulus;
 
         private readonly bool modRed;
 
-        public AstTranslationVisitor(ulong modulus, bool modRed)
+        public AstTranslationVisitor(long modulus, bool modRed)
         {
             this.modulus = modulus;
             this.modRed = modRed;
@@ -100,7 +100,7 @@ namespace GambaDotnet.Parsing
         {
             // TODO: Handle binary literals.
             var text = context.NUMBER().GetText();
-            var value = ulong.Parse(text.Replace("0x", ""), text.Contains("0x") ? NumberStyles.HexNumber : NumberStyles.Number);
+            var value = long.Parse(text.Replace("0x", ""), text.Contains("0x") ? NumberStyles.HexNumber : NumberStyles.Number);
             return CreateConstNode(value);
         }
 
@@ -113,14 +113,14 @@ namespace GambaDotnet.Parsing
         private Node CreateConstNode(long constant)
         {
             var node = new Node(NodeType.CONSTANT, modulus, modRed);
-            node.constant = (ulong)constant;
+            node.constant = constant;
             return node;
         }
 
         private Node CreateConstNode(ulong constant)
         {
             var node = new Node(NodeType.CONSTANT, modulus, modRed);
-            node.constant = constant;
+            node.constant = (long)constant;
             return node;
         }
 

@@ -22,7 +22,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public override string ToString() => value.ToString();
 
-        public static implicit operator long(NullableI32 i) => (long)i.value;
+        public static implicit operator int(NullableI32 i) => (int)i.value;
 
         public static implicit operator NullableI32(int i) => new NullableI32(i);
     }

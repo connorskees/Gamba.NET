@@ -11,7 +11,11 @@ namespace Gamba.Prototyping.Transpiled
     {
         public static List<int> Get(int count) => Enumerable.Range(0, count).ToList();
 
+        public static List<int> Get(long count) => Enumerable.Range(0, (int)count).ToList();
+
         public static List<int> Get(int start, int stop) => Enumerable.Range(start, stop).ToList();
+
+        public static List<int> Get(int start, long stop) => Enumerable.Range(start, (int)stop).ToList();
 
         public static List<int> Get(int start, int stop, int step)
         {

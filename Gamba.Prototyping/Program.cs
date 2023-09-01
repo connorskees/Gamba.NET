@@ -25,6 +25,10 @@ Console.WriteLine("");
 
 Node result = null;
 var parser = new Parser(input, 256, false);
+
+
+Debugger.Break();
+Console.ReadLine();
 for (int i = 0; i < 1000; i++)
 {
     result = (Node)parser.parse_expression();

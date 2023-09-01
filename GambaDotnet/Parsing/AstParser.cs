@@ -10,9 +10,9 @@ namespace GambaDotnet.Parsing
     public static class AstParser
     {
         public static Node Parse(string exprText, uint bitCount, bool modRed = false)
-            => Parse(exprText, (ulong)Math.Pow(2, bitCount), modRed);
+            => Parse(exprText, (long)Math.Pow(2, bitCount), modRed);
 
-        public static Node Parse(string exprText, ulong modulus, bool modRed = false)
+        public static Node Parse(string exprText, long modulus, bool modRed = false)
         {
             // Parse the expression AST.
             var charStream = new AntlrInputStream(exprText);

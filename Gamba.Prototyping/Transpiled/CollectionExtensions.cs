@@ -47,5 +47,19 @@ namespace Gamba.Prototyping.Extensions
             list.RemoveAt(index);
             return popped;
         }
+
+        public static T Pop<T>(this HashSet<T> set)
+        {
+            var first = set.First();
+            set.Remove(first);
+            return first;
+        }
+
+        public static IEnumerable<(int, T)> Enumerate<T>(this IEnumerable<T> input, int start = 0)
+        {
+            int i = start;
+            foreach (var t in input)
+                yield return (i++, t);
+        }
     }
 }

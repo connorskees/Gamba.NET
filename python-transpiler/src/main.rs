@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
     mem,
+    process::exit,
 };
 
 use rustpython_parser::{
@@ -309,16 +310,26 @@ impl TranslationContext {
             "NodeType" => "NodeType".to_owned(),
             "Batch" => "Batch".to_owned(),
             "IndexWithMultitude" => "IndexWithMultitude".to_owned(),
+            "set[int]" => "HashSet<int>".to_owned(),
             "list[str]" => "List<string>".to_owned(),
             "list[bool]" => "List<bool>".to_owned(),
             "list[int]" => "List<int>".to_owned(),
             "list[i64]" => "List<long>".to_owned(),
             "list[Node]" => "List<Node>".to_owned(),
             "list[NodeType]" => "List<NodeType>".to_owned(),
+            "list[IndexWithMultitude]" => "List<IndexWithMultitude>".to_owned(),
+            "list[Batch]" => "List<Batch>".to_owned(),
             "list[Any]" => "List<object>".to_owned(),
             "list[int]" => "List<int>".to_owned(),
             "list[list[int]]" => "List<List<int>>".to_owned(),
+            "list[list[IndexWithMultitude]]" => "List<List<IndexWithMultitude>>".to_owned(),
+            "list[list[tuple[(int, set[IndexWithMultitude])]]]" => "List<List<(int, HashSet<IndexWithMultitude>)>>".to_owned(),
+            "list[list[i64]]" => "List<List<long>>".to_owned(),
             "list[tuple[(int, int)]]" => "List<(int, int)>".to_owned(),
+            "list[tuple[(i64, int)]]" => "List<(long, int)>".to_owned(),
+            "list[tuple[(i64, list[int])]]" => "List<(long, List<int>)>".to_owned(),
+            "list[list[tuple[(i64, int)]]]" => "List<List<(long, int)>>".to_owned(),
+            "list[tuple[(i64, int, list[int])]]" => "List<(long, int, List<int>)>".to_owned(),
             "list[set[IndexWithMultitude]]" => "List<HashSet<IndexWithMultitude>>".to_owned(),
             "set[IndexWithMultitude]" => "HashSet<IndexWithMultitude>".to_owned(),
             "Optional[int]" => "int?".to_owned(),
@@ -338,6 +349,7 @@ impl TranslationContext {
                 "(bool, bool, (long, long, long))".to_owned()
             }
             "tuple[(bool, bool)]" => "(bool, bool)".to_owned(),
+            "tuple[(bool, bool, i64)]" => "(bool, bool, long)".to_owned(),
             "tuple[(Node, Optional[int])]" => "(Node, int?)".to_owned(),
             "tuple[(Node, Optional[int])]" => "(Node, int?)".to_owned(),
             "tuple[(Node, Node)]" => "(Node, Node)".to_owned(),
@@ -349,13 +361,18 @@ impl TranslationContext {
             "tuple[(int, int, int)]" => "(int, int, int)".to_owned(),
             "tuple[(i64, i64, i64)]" => "(long, long, long)".to_owned(),
             "tuple[(int, bool, int)]" => "(int, bool, int)".to_owned(),
-            "tuple[(i64, bool, i64)]" => "(i64, bool, i64)".to_owned(),
+            "tuple[(i64, bool, i64)]" => "(long, bool, long)".to_owned(),
+            "tuple[(i64, int, list[int])]" => "(long, int, List<int>)".to_owned(),
             "tuple[(list[Node], list[Any], list[IndexWithMultitude])]" => {
                 "(List<Node>, List<object>, List<IndexWithMultitude>)".to_owned()
             }
             "tuple[(list[Node], list[Any], list[set[IndexWithMultitude]])]" => {
                 "(List<Node>, List<object>, List<HashSet<IndexWithMultitude>>)".to_owned()
             }
+            "tuple[(list[Node], list[tuple[(int, set[IndexWithMultitude])]], list[set[IndexWithMultitude]])]" => {
+                "(List<Node>, List<(int, HashSet<IndexWithMultitude>)>, List<HashSet<IndexWithMultitude>>)".to_owned()
+            }
+            "list[tuple[(int, set[IndexWithMultitude])]]" => "List<(int, HashSet<IndexWithMultitude>)>".to_owned(),
             "list[tuple[(int, list[int])]]" => "List<(int, List<int>)>".to_owned(),
             _ => {
                 dbg!(type_name);
@@ -537,6 +554,12 @@ impl TranslationContext {
                     name
                 };
 
+                name = if name.ends_with(".add") {
+                    name.replace(".add", ".Add")
+                } else {
+                    name
+                };
+
                 name = if name.ends_with(".index") {
                     name.replace(".index", ".IndexOf")
                 } else {
@@ -597,6 +620,26 @@ impl TranslationContext {
                     name
                 };
 
+                /*
+                name = if name.ends_with("set") {
+                    name.replace("set", "new")
+                } else {
+                    name
+                };
+                */
+
+                if (name == "set") {
+                    return format!(
+                        "new() {{ {} }}",
+                        call_expr
+                            .args
+                            .into_iter()
+                            .map(|arg| self.visit_expr(arg))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
+
                 name = if name.ends_with("sys.exit") {
                     name.replace("sys.exit", "throw new InvalidOperationException")
                 } else {
@@ -614,7 +657,9 @@ impl TranslationContext {
                             .join(", ")
                     )
                 } else {
-                    let new = if name.as_bytes()[0].is_ascii_uppercase() && name == "Node" {
+                    let new = if name.as_bytes()[0].is_ascii_uppercase()
+                        && (name == "Node" || name == "IndexWithMultitude")
+                    {
                         "new "
                     } else {
                         ""
@@ -790,7 +835,11 @@ impl TranslationContext {
                 let select_var_name = if def.elt.is_name_expr() {
                     def.clone().elt.expect_name_expr().id.to_string()
                 } else {
-                    "x".to_owned()
+                    if evaluated_generator.0 != "" {
+                        evaluated_generator.0
+                    } else {
+                        "x".to_owned()
+                    }
                 };
 
                 // Here 'elt' is equivalent to the lamba on the right hand side of a linq query.
@@ -798,15 +847,43 @@ impl TranslationContext {
                 let lambda = self.visit_expr(*def.elt.clone());
 
                 format!(
-                    "{}.Select({} => {})",
-                    evaluated_generator, select_var_name, lambda
+                    "{}.Select({} => {}).ToList()",
+                    evaluated_generator.1, select_var_name, lambda
+                )
+            }
+            ast::Expr::SetComp(def) => {
+                assert!(def.generators.len() == 1);
+
+                // Convert the generator into a LINQ 'While(x => predicate1 && predicate2 && predicate ... )' query.
+                let evaluated_generator = self.visit_generator(def.generators[0].clone());
+
+                // LINQ queries in C# follow the format of collection.Query(x => lambda_expression),
+                // where "x" is a variable name used to represent the input variable to the lambda.
+                // So first we must pick the variable name to use. If the generator supplies a name then we use it,
+                // if not we default to 'x';
+                let select_var_name = if def.elt.is_name_expr() {
+                    def.clone().elt.expect_name_expr().id.to_string()
+                } else {
+                    if evaluated_generator.0 != "" {
+                        evaluated_generator.0
+                    } else {
+                        "x".to_owned()
+                    }
+                };
+
+                // Here 'elt' is equivalent to the lamba on the right hand side of a linq query.
+                // E.g. if you have expression_list.Where(x => x.IsLinear()), this is equivalent to "x.IsLinear()".
+                let lambda = self.visit_expr(*def.elt.clone());
+
+                format!(
+                    "{}.Select({} => {}).ToHashSet()",
+                    evaluated_generator.1, select_var_name, lambda
                 )
             }
             ast::Expr::NamedExpr(_)
             | ast::Expr::Lambda(_)
             | ast::Expr::Dict(_)
             | ast::Expr::Set(_)
-            | ast::Expr::SetComp(_)
             | ast::Expr::DictComp(_)
             | ast::Expr::GeneratorExp(_)
             | ast::Expr::Await(_)
@@ -818,29 +895,38 @@ impl TranslationContext {
         }
     }
 
-    fn visit_generator(&mut self, comp: Comprehension) -> String {
+    // Given a python generator, return an equivalent LINQ .Where() statement.
+    // The first tuple element represents the variable name used in the Where(x =>) statement,
+    // while the second tuple element represents the entire .Where() statement.
+    fn visit_generator(&mut self, comp: Comprehension) -> (String, String) {
         // A comprehension in Python can be modeled as a series of LINQ queries.
         // First you have the collection being queried on - which in this case is the 'iter' field of the comprehension.
         let iterable_collection = self.visit_expr(comp.iter);
 
         // Then the collection can be filtered using a series of if statements / predicates.
         // We then filter the collection using .Where(if1 && if2 && ... ).
-        let linq_where_predicate = comp
+        let mut linq_where_predicate = comp
             .ifs
             .iter()
             .map(|predicate| self.visit_expr(predicate.clone()))
             .collect::<Vec<_>>()
             .join(" && ");
 
+        linq_where_predicate = if linq_where_predicate == "" {
+            "true".to_owned()
+        } else {
+            linq_where_predicate
+        };
+
+        let linq_lhs_variable = self.visit_expr(comp.target);
+
         // Model the comprehe
         let comprehension = format!(
             "{}.Where({} => {})",
-            iterable_collection,
-            self.visit_expr(comp.target),
-            linq_where_predicate
+            iterable_collection, linq_lhs_variable, linq_where_predicate
         );
 
-        return comprehension.to_owned();
+        return (linq_lhs_variable, comprehension.to_owned());
     }
 }
 
