@@ -312,16 +312,17 @@ namespace Gamba.Prototyping.Transpiler
             {
                 if (node.children[0].type == NodeType.CONSTANT)
                 {
-                    node.children[0].constant *= long.MaxValue;
+
+                    node.children[0].constant *= unchecked((long)ulong.MaxValue);
                     return node;
                 }
                 var minusOne = this.__new_node(NodeType.CONSTANT);
-                minusOne.constant = long.MaxValue;
+                minusOne.constant = unchecked((long)ulong.MaxValue);
                 node.children.Insert(0, minusOne);
                 return node;
             }
             var minus1 = this.__new_node(NodeType.CONSTANT);
-            minus1.constant = long.MaxValue;
+            minus1.constant = unchecked((long)ulong.MaxValue);
             var prod = this.__new_node(NodeType.PRODUCT);
             prod.children.Add(minus1);
             prod.children.Add(node);

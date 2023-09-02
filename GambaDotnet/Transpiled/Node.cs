@@ -104,7 +104,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 // r = (r * x) % m;
                 var rBv = ctx.MkZeroExt(1, ctx.MkBV(r * x, bitCount));
-                rBv = ctx.MkBVSMod(rBv, modulusBv);
+                rBv = ctx.MkBVURem(rBv, modulusBv);
                 if (r == 0)
                     return 0;
             }
@@ -122,7 +122,7 @@ namespace Gamba.Prototyping.Transpiled
             {
                 // r = (r * x) % m;
                 var rBv = ctx.MkZeroExt(1, ctx.MkBV(r * x, bitCount));
-                rBv = ctx.MkBVSMod(rBv, modulusBv);
+                rBv = ctx.MkBVURem(rBv, modulusBv);
                 if (r == 0)
                     return 0;
             }
@@ -147,7 +147,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public static long mod_red(long n, long modulus)
         {
-            var mod = ctx.MkBVSMod(ctx.MkBV(n, 64), ctx.MkBV(modulus, 64)).Simplify() as BitVecNum;
+            var mod = ctx.MkBVURem(ctx.MkBV(n, 64), ctx.MkBV(modulus, 64)).Simplify() as BitVecNum;
             return mod.GetInt64();
         }
 
@@ -155,16 +155,16 @@ namespace Gamba.Prototyping.Transpiled
 
         public long mod_red(long n, BitVecNum modulus)
         {
-            var bv = ctx.MkBV(n, bitCount + 1);
-            var mod = ctx.MkBVSMod(bv, modulus).Simplify() as BitVecNum;
-            var result = (long)((ulong)(mod.BigInteger & ulong.MaxValue));
+            var bv = ctx.MkBV((ulong)n, bitCount + 1);
+            var mod = ctx.MkBVURem(bv, modulus).Simplify() as BitVecNum;
+            var result = mod.GetInt64();
             return result;
         }
 
         public long mod_red(BitVecNum n, long mod)
         {
             var modulus = ctx.MkBV(mod, bitCount + 1);
-            var bvMod = ctx.MkBVSMod(n, modulus).Simplify() as BitVecNum;
+            var bvMod = ctx.MkBVURem(n, modulus).Simplify() as BitVecNum;
             return bvMod.GetInt64();
         }
 
@@ -251,7 +251,19 @@ namespace Gamba.Prototyping.Transpiled
 
         public int __vidx = -1;
 
-        public long constant = 0;
+        public long _constant = 0;
+
+        public long constant
+        {
+            get => _constant;
+            set
+            {
+               // if (value == 9223372036854775807)
+                   // Debugger.Break();
+
+                _constant = value;
+            }
+        }
 
         public NodeState state = NodeState.UNKNOWN;
 
@@ -443,6 +455,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public long __get_reduced_constant(long c)
         {
+            //if (c == 9223372036854775807)
+             //   Debugger.Break();
             if (this.__modRed)
             {
                 return mod_red(c, this.__modulus);
@@ -452,10 +466,12 @@ namespace Gamba.Prototyping.Transpiled
 
         public long __get_reduced_constant_closer_to_zero(long c)
         {
+            var oldC = c;
             var foobar = ulong.MaxValue;
             var intBar = (long)foobar;
             var maxBar = (ulong)intBar;
             c = mod_red(c, this.__modulus);
+            var modRedC = c;
             /*
             if ((((2) * (c))) > (this.__modulus))
             {
@@ -463,11 +479,13 @@ namespace Gamba.Prototyping.Transpiled
             }
             */
 
-            var cond = ctx.MkBVUGT(ctx.MkBV(2 * c, bitCount + 1), this.__modulus).Simplify();
+            var cond = ctx.MkBVSGT(ctx.MkBV(2 * c, bitCount + 1), this.__modulus).Simplify();
             var bvCond = cond as BoolExpr;
             if (bvCond.IsTrue)
                 c = (ctx.MkBVSub(ctx.MkBV(c, 65), this.__modulus).Simplify() as BitVecNum).GetInt64();
 
+            //if (c == 9223372036854775807)
+            //    Debugger.Break();
             return c;
             //return cond.Int64 != 0;
         }
@@ -479,6 +497,8 @@ namespace Gamba.Prototyping.Transpiled
 
         public void __set_and_reduce_constant(long c)
         {
+            //if (c == 9223372036854775807)
+             //   Debugger.Break();
             this.constant = this.__get_reduced_constant(c);
         }
 
@@ -766,7 +786,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public Node __new_node(NodeType t)
         {
-            return new Node(t, long.MaxValue, this.__modRed);
+            return new Node(t, unchecked((long)ulong.MaxValue), this.__modRed);
         }
 
         public Node __new_constant_node(long constant)
@@ -2538,18 +2558,27 @@ namespace Gamba.Prototyping.Transpiled
 
         public bool __check_beautify_constants_in_products()
         {
+            //if (this.ToString() == "2199023256422*(-1^-2199023256422+3298534884633*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))|b)+3298534884633*(-1^-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))^b)-5497558141055*~(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)-7696581397477*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)+1099511628211*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&~b)^c)")
+             //   Debugger.Break();
+
             if ((this.type) != (NodeType.PRODUCT))
             {
+               // if (this.ToString() == "2199023256422*(-1^-2199023256422+3298534884633*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))|b)+3298534884633*(-1^-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))^b)-5497558141055*~(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)-7696581397477*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)+1099511628211*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&~b)^c)")
+                 //   Debugger.Break();
                 return false;
             }
             if ((this.children[0].type) != (NodeType.CONSTANT))
             {
+               // if (this.ToString() == "2199023256422*(-1^-2199023256422+3298534884633*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))|b)+3298534884633*(-1^-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))^b)-5497558141055*~(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)-7696581397477*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)+1099511628211*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&~b)^c)")
+               //     Debugger.Break();
                 return false;
             }
 
             var e = trailing_zeros(this.children[0].constant);
             if ((e) <= (0))
             {
+                //if (this.ToString() == "2199023256422*(-1^-2199023256422+3298534884633*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))|b)+3298534884633*(-1^-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))^b)-5497558141055*~(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)-7696581397477*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)+1099511628211*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&~b)^c)")
+               //     Debugger.Break();
                 return false;
             }
 
@@ -2563,6 +2592,9 @@ namespace Gamba.Prototyping.Transpiled
                 }
             }
 
+
+           // if (this.ToString() == "2199023256422*(-1^-2199023256422+3298534884633*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))|b)+3298534884633*(-1^-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))^b)-5497558141055*~(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)-7696581397477*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&b)+1099511628211*(-5808590958014384161+2199023256422*(2063597568&(-16777216^-1073741823+(4278190080|~a)+a))-1099511628211*(-16777216^-1073741824+(4278190080&a))&~b)^c)")
+             //   Debugger.Break();
             return changed;
         }
 
@@ -2593,11 +2625,19 @@ namespace Gamba.Prototyping.Transpiled
             }
 
             var orig = this.constant;
+           // if (orig == -5808590958014384161)
+               // Debugger.Break();
+
+            var longMv = ulong.MaxValue;
+            var modNeg1 = Mod((long)longMv, this.__modulus);
+            var mod = (BitVecExpr)ctx.MkBV((ulong)modNeg1, bitCount + 1).Simplify();
+
+            //var realMod = ctx.MkBVURem(ctx.MkBV(longMv, bitCount + 1), this.__modulus).Simplify();
 
             //var mask = ((Mod(-(1), this.__modulus)) >> (e));
-            var mask = ctx.MkBVASHR(ctx.MkBV(Mod(-(1), this.__modulus), bitCount + 1), ctx.MkBV(e, bitCount + 1)).Simplify() as BitVecNum;
+            var mask = ctx.MkBVLSHR(mod, ctx.MkBV(e, bitCount + 1)).Simplify() as BitVecNum;
             // var b = ((this.constant) & (((this.__modulus) >> (((e) + (1))))));
-            var rhs = (ctx.MkBVASHR(this.__modulus, (ctx.MkBVAdd(ctx.MkBV(e, bitCount + 1), ctx.MkBV(1, bitCount + 1))))).Simplify() as BitVecNum;
+            var rhs = (ctx.MkBVLSHR(this.__modulus, (ctx.MkBVAdd(ctx.MkBV(e, bitCount + 1), ctx.MkBV(1, bitCount + 1))))).Simplify() as BitVecNum;
             var b = this.constant & rhs.GetInt64();
 
             this.constant &= mask.GetInt64();

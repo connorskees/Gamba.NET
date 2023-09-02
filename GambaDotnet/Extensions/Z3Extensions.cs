@@ -11,7 +11,8 @@ namespace GambaDotnet.Extensions
     {
         public static long GetInt64(this BitVecNum expr)
         {
-            var result = (long)((ulong)(expr.BigInteger & ulong.MaxValue));
+            var ul = (ulong)(expr.BigInteger & ulong.MaxValue);
+            var result = unchecked((long)(ul));
             return result;
         }
     }

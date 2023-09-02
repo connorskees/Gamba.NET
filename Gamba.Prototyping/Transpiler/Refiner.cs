@@ -85,9 +85,9 @@ namespace Gamba.Prototyping.Transpiler
 
             if (before != after)
             {
-                Console.WriteLine(methodName);
-                Console.WriteLine($"    Before {methodName}: {before}");
-                Console.WriteLine($"    After {methodName} : {after}");
+               Console.WriteLine(methodName);
+              Console.WriteLine($"    Before {methodName}: {before}");
+              Console.WriteLine($"    After {methodName} : {after}");
             }
         }
 
