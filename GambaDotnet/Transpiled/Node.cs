@@ -2598,6 +2598,8 @@ namespace Gamba.Prototyping.Transpiled
             return changed;
         }
 
+        public static long ms = 0;
+
         public bool __check_beautify_constants(long ee)
         {
 
@@ -2625,9 +2627,10 @@ namespace Gamba.Prototyping.Transpiled
             }
 
             var orig = this.constant;
-           // if (orig == -5808590958014384161)
-               // Debugger.Break();
+            // if (orig == -5808590958014384161)
+            // Debugger.Break();
 
+            var sw = Stopwatch.StartNew();
             var longMv = ulong.MaxValue;
             var modNeg1 = Mod((long)longMv, this.__modulus);
             var mod = (BitVecExpr)ctx.MkBV((ulong)modNeg1, bitCount + 1).Simplify();
@@ -2652,6 +2655,8 @@ namespace Gamba.Prototyping.Transpiled
             }
 
             this.__reduce_constant();
+            sw.Stop();
+            ms += sw.ElapsedTicks;
             return (this.constant) != (orig);
         }
 

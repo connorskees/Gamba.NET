@@ -24,7 +24,6 @@ input = "((((((((((((a & 255)  | (d ^ -1) )  | ((((((2199023256421 - (((((((((2 
 //input = "2 * (2063597568 & (-16777216 ^ ((-1073741823 + a)  + (4278190080 | (a ^ -1) ) ) ) ) )";
 //input = "2*(x|~y)-1*(x|y)-2*x+2*(~(x^y))-2*~x-1*(~(x&y))-1*(~(x&~x))-2*y-2*(~(x|y))+6*(~(x|~y))+4*(x&~y)";
 
-
 input = StringUtility.RemoveWhitespace(input);
 Console.WriteLine(input.Length);
 Console.WriteLine(input);
@@ -34,6 +33,17 @@ Node result = null;
 var parser = new Gamba.Prototyping.Transpiler.GambaParser(input, 64, false);
 Node expr = parser.parse_expression();
 Console.WriteLine(expr);
+
+for(int i = 0; i < 10; i++)
+{
+    var gSw = Stopwatch.StartNew();
+    var clone = expr.get_copy();
+    clone.refine();
+    gSw.Stop();
+
+    Console.WriteLine(Node.ms);
+    Console.WriteLine($"Took {gSw.ElapsedMilliseconds}ms to simplify tree.");
+}
 
 Refiner.InstrumentedRefine(expr);
 //expr.refine();
