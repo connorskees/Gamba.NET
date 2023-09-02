@@ -10,10 +10,12 @@ namespace GambaDotnet.TestingUtils
 {
     /// <summary>
     /// Class representing an MBA expression within a given dataset.
+    /// This is intended to store the parsed contents of GAMBA and SiMBA's MBA datasets.
     /// </summary>
     /// <param name="Expr">The string representation of the input expression.</param>
     /// <param name="ParsedExpr">The parsed AST of the input expression.</param>
     /// <param name="GroundTruth">The string representation of the ground truth expression.</param>
+    /// <param name="ParsedGroundTruth">The parsed ground truth expression.</param>
     /// <param name="ParsedGroundTruth">The parsed ground truth expression.</param>
     public record MbaExpression(string StrExpr, Node ParsedExpr, string StrGroundTruth, Node ParsedGroundTruth);
 

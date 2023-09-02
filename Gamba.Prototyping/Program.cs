@@ -31,7 +31,7 @@ Console.WriteLine(input);
 Console.WriteLine("");
 
 Node result = null;
-var parser = new Parser(input, 32, false);
+var parser = new Gamba.Prototyping.Transpiler.GambaParser(input, 32, false);
 Node expr = parser.parse_expression();
 Console.WriteLine(expr);
 

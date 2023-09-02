@@ -32,8 +32,6 @@ namespace Gamba.Prototyping.Transpiler
             Replace("None", "null");
         }
 
-
-
         private void Replace(string oldValue, string newValue)
         {
             lines = lines.Select(x => x.Replace(oldValue, newValue)).ToList();
