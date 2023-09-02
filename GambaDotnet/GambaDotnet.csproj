@@ -23,11 +23,5 @@
     <PackageReference Include="Antlr4.Runtime" Version="4.6.6" />
     <PackageReference Include="Microsoft.Z3" Version="4.12.2" />
   </ItemGroup>
-  
-  
-
-  <ItemGroup>
-    <Folder Include="Extensions\" />
-  </ItemGroup>
 
 </Project>

@@ -38,7 +38,7 @@ namespace Gamba.Prototyping.Transpiler
             this.__error = "";
         }
 
-        public static void Parse(string expr, int bitCount = 64, bool modRed = false, long? modulus = 0)
+        public static Node Parse(string expr, int bitCount = 64, bool modRed = false, long? modulus = 0)
         {
             // TODO: Use bit masks instead of modulus.
             var parser = new GambaParser(expr, 0, modRed);

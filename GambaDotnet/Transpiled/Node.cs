@@ -1,6 +1,7 @@
 ﻿using Antlr4.Runtime.Dfa;
 using Gamba.Prototyping.Extensions;
 using GambaDotnet;
+using GambaDotnet.Extensions;
 using Microsoft.Z3;
 using System;
 using System.Collections.Generic;
@@ -92,7 +93,26 @@ namespace Gamba.Prototyping.Transpiled
             return x;
         }
 
-        public static long power(long x, long e, long m)
+        public long power(long x, long e, long m)
+        {
+            if (x == 1)
+                return 1;
+
+            var modulusBv = ctx.MkBV(m, bitCount + 1);
+            long r = 1;
+            for (long i = 0; i < e; i++)
+            {
+                // r = (r * x) % m;
+                var rBv = ctx.MkZeroExt(1, ctx.MkBV(r * x, bitCount));
+                rBv = ctx.MkBVSMod(rBv, modulusBv);
+                if (r == 0)
+                    return 0;
+            }
+
+            return r;
+        }
+
+        public long power(long x, long e, BitVecNum modulusBv)
         {
             if (x == 1)
                 return 1;
@@ -100,7 +120,9 @@ namespace Gamba.Prototyping.Transpiled
             long r = 1;
             for (long i = 0; i < e; i++)
             {
-                r = (r * x) % m;
+                // r = (r * x) % m;
+                var rBv = ctx.MkZeroExt(1, ctx.MkBV(r * x, bitCount));
+                rBv = ctx.MkBVSMod(rBv, modulusBv);
                 if (r == 0)
                     return 0;
             }
@@ -126,10 +148,31 @@ namespace Gamba.Prototyping.Transpiled
         public static long mod_red(long n, long modulus)
         {
             var mod = ctx.MkBVSMod(ctx.MkBV(n, 64), ctx.MkBV(modulus, 64)).Simplify() as BitVecNum;
-            return mod.Int64;
+            return mod.GetInt64();
         }
 
-        public static long Mod(long n, long modulus) => mod_red(n, modulus);
+
+
+        public long mod_red(long n, BitVecNum modulus)
+        {
+            var bv = ctx.MkBV(n, bitCount + 1);
+            var mod = ctx.MkBVSMod(bv, modulus).Simplify() as BitVecNum;
+            var result = (long)((ulong)(mod.BigInteger & ulong.MaxValue));
+            return result;
+        }
+
+        public long mod_red(BitVecNum n, long mod)
+        {
+            var modulus = ctx.MkBV(mod, bitCount + 1);
+            var bvMod = ctx.MkBVSMod(n, modulus).Simplify() as BitVecNum;
+            return bvMod.GetInt64();
+        }
+
+        public long Mod(long n, long modulus) => mod_red(n, modulus);
+
+        public long Mod(long n, BitVecNum modulus) => mod_red(n, modulus);
+
+        public long Mod(BitVecNum n, long modulus) => mod_red(n, modulus);
 
         public static bool do_children_match(List<Node> l1, List<Node> l2)
         {
@@ -196,7 +239,9 @@ namespace Gamba.Prototyping.Transpiled
 
         public NodeType type;
 
-        public long __modulus;
+        public uint bitCount;
+
+        public BitVecNum __modulus;
 
         public bool __modRed;
 
@@ -214,7 +259,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public int __MAX_IT = 10;
 
-        public Node(NodeType nodeType, long modulus, bool modRed = false)
+        public Node(NodeType nodeType, long modulus = 0, bool modRed = false, uint bitCount = 64)
         {
             this.type = nodeType;
             this.children = new List<Node>() { };
@@ -222,7 +267,18 @@ namespace Gamba.Prototyping.Transpiled
             this.__vidx = -(1);
             this.constant = 0;
             this.state = NodeState.UNKNOWN;
-            this.__modulus = modulus;
+            this.bitCount = 64;
+            if (bitCount > 64 || bitCount == 0)
+                throw new InvalidOperationException();
+
+            // Temporary hack to handle 64 integers. Note: The modulus(2**64) does not fit.
+            ulong bvNum = ULongPower(2, bitCount - 1);
+            BitVecExpr power = ctx.MkBV(bvNum, bitCount);
+            power = ctx.MkZeroExt(1, power);
+            power = ctx.MkBVMul(ctx.MkBV(2, 65), power);
+            power = (BitVecNum)power.Simplify();
+            this.__modulus = (BitVecNum)power;
+
             this.__modRed = modRed;
             this.linearEnd = 0;
             this.__MAX_IT = 10;
@@ -396,12 +452,24 @@ namespace Gamba.Prototyping.Transpiled
 
         public long __get_reduced_constant_closer_to_zero(long c)
         {
+            var foobar = ulong.MaxValue;
+            var intBar = (long)foobar;
+            var maxBar = (ulong)intBar;
             c = mod_red(c, this.__modulus);
+            /*
             if ((((2) * (c))) > (this.__modulus))
             {
                 c -= this.__modulus;
             }
+            */
+
+            var cond = ctx.MkBVUGT(ctx.MkBV(2 * c, bitCount + 1), this.__modulus).Simplify();
+            var bvCond = cond as BoolExpr;
+            if (bvCond.IsTrue)
+                c = (ctx.MkBVSub(ctx.MkBV(c, 65), this.__modulus).Simplify() as BitVecNum).GetInt64();
+
             return c;
+            //return cond.Int64 != 0;
         }
 
         public void __reduce_constant()
@@ -698,7 +766,7 @@ namespace Gamba.Prototyping.Transpiled
 
         public Node __new_node(NodeType t)
         {
-            return new Node(t, this.__modulus, this.__modRed);
+            return new Node(t, long.MaxValue, this.__modRed);
         }
 
         public Node __new_constant_node(long constant)
@@ -2526,17 +2594,20 @@ namespace Gamba.Prototyping.Transpiled
 
             var orig = this.constant;
 
-            var mask = ((Mod(-(1), this.__modulus)) >> (e));
-            var b = ((this.constant) & (((this.__modulus) >> (((e) + (1))))));
+            //var mask = ((Mod(-(1), this.__modulus)) >> (e));
+            var mask = ctx.MkBVASHR(ctx.MkBV(Mod(-(1), this.__modulus), bitCount + 1), ctx.MkBV(e, bitCount + 1)).Simplify() as BitVecNum;
+            // var b = ((this.constant) & (((this.__modulus) >> (((e) + (1))))));
+            var rhs = (ctx.MkBVASHR(this.__modulus, (ctx.MkBVAdd(ctx.MkBV(e, bitCount + 1), ctx.MkBV(1, bitCount + 1))))).Simplify() as BitVecNum;
+            var b = this.constant & rhs.GetInt64();
 
-            this.constant &= mask;
+            this.constant &= mask.GetInt64();
 
             if ((b) > (0))
             {
 
                 if ((((popcount(this.constant)) > (1)) || ((b) == (1))))
                 {
-                    this.constant |= ~(mask);
+                    this.constant |= ~(mask.GetInt64());
                 }
             }
 
@@ -6875,8 +6946,10 @@ namespace Gamba.Prototyping.Transpiled
                     opSum.children.Add(op.get_copy());
                 }
 
-                var hmod = ((this.__modulus) / (2));
-                opSum.__multiply(-(hmod));
+                //var hmod = ((this.__modulus) / (2));
+                var hmod = ctx.MkBVUDiv(this.__modulus, ctx.MkBV(2, bitCount + 1)).Simplify() as BitVecNum;
+                var sub = ctx.MkBVSub(ctx.MkBV(0, bitCount + 1), hmod).Simplify() as BitVecNum;
+                opSum.__multiply(sub.GetInt64());
 
                 var diff2 = diff.get_copy();
                 diff2.__add(opSum);
@@ -6886,7 +6959,7 @@ namespace Gamba.Prototyping.Transpiled
                 if ((diff2.type) == (NodeType.CONSTANT))
                 {
                     diff = diff2;
-                    factor += hmod;
+                    factor += hmod.GetInt64();
                 }
             }
 

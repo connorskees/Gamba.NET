@@ -31,14 +31,18 @@ Console.WriteLine(input);
 Console.WriteLine("");
 
 Node result = null;
-var parser = new Gamba.Prototyping.Transpiler.GambaParser(input, 32, false);
+var parser = new Gamba.Prototyping.Transpiler.GambaParser(input, 64, false);
 Node expr = parser.parse_expression();
 Console.WriteLine(expr);
 
 Refiner.InstrumentedRefine(expr);
 //expr.refine();
 
-Console.WriteLine($"{expr.to_string()}");
+Console.WriteLine(Environment.NewLine + Environment.NewLine + Environment.NewLine);
+Console.WriteLine($"Expression:{expr.to_string()}");
+Console.WriteLine("");
+Console.WriteLine("");
+Console.WriteLine("done.");
 Debugger.Break();
 Console.ReadLine();
 for (int i = 0; i < 1000; i++)
