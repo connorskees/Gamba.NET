@@ -1,15 +1,14 @@
 use core::panic;
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     mem,
-    process::exit,
 };
 
 use rustpython_parser::{
     ast::{
         self, BoolOp, CmpOp, Comprehension, Expr, Operator, StmtClassDef, StmtFunctionDef, UnaryOp,
     },
+    source_code::LineIndex,
     text_size::TextRange,
     Parse,
 };
@@ -25,6 +24,8 @@ pub struct TranslationContext {
     owning_function: Option<StmtFunctionDef>,
     /// The current C# output
     output: String,
+    line_index: LineIndex,
+    current_line: usize,
 }
 
 impl TranslationContext {
@@ -48,7 +49,47 @@ impl TranslationContext {
         self.indentation -= 1;
     }
 
+    fn text_range(stmt: &ast::Stmt) -> TextRange {
+        match stmt {
+            ast::Stmt::FunctionDef(ast::StmtFunctionDef { range, .. })
+            | ast::Stmt::AsyncFunctionDef(ast::StmtAsyncFunctionDef { range, .. })
+            | ast::Stmt::ClassDef(ast::StmtClassDef { range, .. })
+            | ast::Stmt::Return(ast::StmtReturn { range, .. })
+            | ast::Stmt::Delete(ast::StmtDelete { range, .. })
+            | ast::Stmt::Assign(ast::StmtAssign { range, .. })
+            | ast::Stmt::TypeAlias(ast::StmtTypeAlias { range, .. })
+            | ast::Stmt::AugAssign(ast::StmtAugAssign { range, .. })
+            | ast::Stmt::AnnAssign(ast::StmtAnnAssign { range, .. })
+            | ast::Stmt::For(ast::StmtFor { range, .. })
+            | ast::Stmt::AsyncFor(ast::StmtAsyncFor { range, .. })
+            | ast::Stmt::While(ast::StmtWhile { range, .. })
+            | ast::Stmt::If(ast::StmtIf { range, .. })
+            | ast::Stmt::With(ast::StmtWith { range, .. })
+            | ast::Stmt::AsyncWith(ast::StmtAsyncWith { range, .. })
+            | ast::Stmt::Match(ast::StmtMatch { range, .. })
+            | ast::Stmt::Raise(ast::StmtRaise { range, .. })
+            | ast::Stmt::Try(ast::StmtTry { range, .. })
+            | ast::Stmt::TryStar(ast::StmtTryStar { range, .. })
+            | ast::Stmt::Assert(ast::StmtAssert { range, .. })
+            | ast::Stmt::Import(ast::StmtImport { range, .. })
+            | ast::Stmt::ImportFrom(ast::StmtImportFrom { range, .. })
+            | ast::Stmt::Global(ast::StmtGlobal { range, .. })
+            | ast::Stmt::Nonlocal(ast::StmtNonlocal { range, .. })
+            | ast::Stmt::Expr(ast::StmtExpr { range, .. })
+            | ast::Stmt::Pass(ast::StmtPass { range, .. })
+            | ast::Stmt::Break(ast::StmtBreak { range, .. })
+            | ast::Stmt::Continue(ast::StmtContinue { range, .. }) => *range,
+        }
+    }
+
     fn visit(&mut self, stmt: ast::Stmt) {
+        // https://docs.rs/rustpython-ast/0.3.0/rustpython_ast/source_code/index.html
+        let range = Self::text_range(&stmt);
+        let line = self.line_index.line_index(range.start()).get() as usize;
+        if line > self.current_line + 1 {
+            println!();
+        }
+        self.current_line = line;
         match stmt {
             ast::Stmt::ClassDef(def) => self.visit_class_def(def),
             ast::Stmt::FunctionDef(def) => self.visit_function_def(def),
@@ -146,15 +187,43 @@ impl TranslationContext {
             self.indent(),
             self.visit_expr(*if_stmt.test)
         );
+
         self.visit_body(if_stmt.body);
         print!("{}}}", self.indent());
-        if if_stmt.orelse.is_empty() {
-            println!("")
-        } else {
-            println!(" else {{");
-            self.visit_body(if_stmt.orelse);
-            println!("{}}}", self.indent());
+
+        let mut else_body = if_stmt.orelse;
+
+        while !else_body.is_empty() {
+            if else_body.len() == 1 && else_body[0].is_if_stmt() {
+                let if_stmt = else_body[0].clone().expect_if_stmt();
+                print!(" else if ({}) {{", self.visit_expr(*if_stmt.test));
+                if if_stmt.body.len() == 1 {
+                    println!("");
+                }
+                self.visit_body(if_stmt.body);
+                print!("{}}}", self.indent());
+                else_body = if_stmt.orelse;
+            } else {
+                if else_body.len() == 1 {
+                    println!(" else {{");
+                } else {
+                    print!(" else {{");
+                }
+                self.visit_body(else_body);
+                print!("{}}}", self.indent());
+                break;
+            }
         }
+
+        println!("");
+
+        // if if_stmt.orelse.is_empty() {
+        //     println!("")
+        // } else {
+        //     print!(" else {{");
+        //     self.visit_body(if_stmt.orelse);
+        //     println!("{}}}", self.indent());
+        // }
     }
 
     fn visit_while_stmt(&mut self, while_stmt: ast::StmtWhile) {
@@ -188,8 +257,8 @@ impl TranslationContext {
             .as_ref()
             .map(|default| format!("={}", self.visit_expr(*default.clone())));
 
-        if (name == "this" || name == "self") {
-            return format!("{}", "this");
+        if name == "this" || name == "self" {
+            return "this".to_owned();
         }
 
         if arg.clone().def.annotation.is_none() {
@@ -274,7 +343,7 @@ impl TranslationContext {
         let mapping = self.defined_variables.get_mut(&def.range).unwrap();
         for arg in def.clone().args.args {
             let arg_name = arg.def.arg.to_string();
-            if (!mapping.contains(&arg_name)) {
+            if !mapping.contains(&arg_name) {
                 mapping.insert(arg_name.to_string());
             }
         }
@@ -283,7 +352,7 @@ impl TranslationContext {
         self.visit_body(def.clone().body);
         mem::swap(&mut self.owning_function, &mut Some(def.clone()));
 
-        println!("{}}}\n", self.indent());
+        println!("{}}}", self.indent());
     }
 
     fn function_return_type(&mut self, def: &ast::StmtFunctionDef) -> String {
@@ -291,8 +360,6 @@ impl TranslationContext {
             return String::new();
         }
 
-        //println!("def:\n");
-        //dbg!(def.clone());
         let return_type_str = self.visit_expr(*def.clone().returns.unwrap());
 
         return self.type_to_csharp(return_type_str);
@@ -320,7 +387,6 @@ impl TranslationContext {
             "list[IndexWithMultitude]" => "List<IndexWithMultitude>".to_owned(),
             "list[Batch]" => "List<Batch>".to_owned(),
             "list[Any]" => "List<object>".to_owned(),
-            "list[int]" => "List<int>".to_owned(),
             "list[list[int]]" => "List<List<int>>".to_owned(),
             "list[list[IndexWithMultitude]]" => "List<List<IndexWithMultitude>>".to_owned(),
             "list[list[tuple[(int, set[IndexWithMultitude])]]]" => "List<List<(int, HashSet<IndexWithMultitude>)>>".to_owned(),
@@ -519,7 +585,7 @@ impl TranslationContext {
 
     fn visit_expr(&mut self, expr: ast::Expr) -> String {
         match expr {
-            ast::Expr::Name(def) => def.id.to_string(),
+            ast::Expr::Name(def) => Self::self_to_this(def.id.to_string()),
             ast::Expr::Constant(constant) => match constant.value {
                 ast::Constant::None => "null".to_owned(),
                 ast::Constant::Bool(v) => v.to_string(),
@@ -535,100 +601,40 @@ impl TranslationContext {
                 let mut name = self.visit_expr(*call_expr.func);
                 name = name.replace("re.match", "reutil.match");
 
-                // TODO: Refactor into helper method.
-                name = if name.ends_with(".equals") {
-                    name.replace(".equals", ".Equals")
-                } else {
-                    name
-                };
+                let methods = [
+                    (".append", ".Add"),
+                    (".insert", ".Insert"),
+                    (".add", ".Add"),
+                    (".index", ".IndexOf"),
+                    (".remove", ".Remove"),
+                    (".extend", ".AddRange"),
+                    (".pop", ".Pop"),
+                ];
 
-                name = if name.ends_with(".append") {
-                    name.replace(".append", ".Add")
-                } else {
-                    name
-                };
+                let functions = [
+                    ("int", "Convert.ToInt32"),
+                    ("list", "new"),
+                    ("min", "Math.min"),
+                    ("reversed", "ListUtil.Reversed"),
+                    ("range", "Range.Get"),
+                    ("sys.exit", "throw new InvalidOperationException"),
+                ];
 
-                name = if name.ends_with(".insert") {
-                    name.replace(".insert", ".Insert")
-                } else {
-                    name
-                };
+                for (python_method, cs_method) in methods {
+                    if name.ends_with(python_method) {
+                        name = name.replace(python_method, cs_method);
+                        break;
+                    }
+                }
 
-                name = if name.ends_with(".add") {
-                    name.replace(".add", ".Add")
-                } else {
-                    name
-                };
+                for (python_fn, cs_fn) in functions {
+                    if name == python_fn {
+                        name = cs_fn.to_owned();
+                        break;
+                    }
+                }
 
-                name = if name.ends_with(".index") {
-                    name.replace(".index", ".IndexOf")
-                } else {
-                    name
-                };
-
-                name = if name == "int" {
-                    name.replace("int", "Convert.ToInt32")
-                } else {
-                    name
-                };
-
-                name = if name == "list" {
-                    name.replace("list", "new")
-                } else {
-                    name
-                };
-
-                name = if name == "min" {
-                    name.replace("min", "Math.Min")
-                } else {
-                    name
-                };
-
-                name = if name == "reversed" {
-                    name.replace("reversed", "ListUtil.Reversed")
-                } else {
-                    name
-                };
-
-                name = if name.ends_with(".sort") {
-                    name.replace(".sort", ".Sort")
-                } else {
-                    name
-                };
-
-                name = if name.ends_with(".remove") {
-                    name.replace(".remove", ".Remove")
-                } else {
-                    name
-                };
-
-                name = if name.ends_with(".extend") {
-                    name.replace(".extend", ".AddRange")
-                } else {
-                    name
-                };
-
-                name = if name.ends_with(".pop") {
-                    name.replace(".pop", ".Pop")
-                } else {
-                    name
-                };
-
-                name = if name.ends_with("range") {
-                    name.replace("range", "Range.Get")
-                } else {
-                    name
-                };
-
-                /*
-                name = if name.ends_with("set") {
-                    name.replace("set", "new")
-                } else {
-                    name
-                };
-                */
-
-                if (name == "set") {
+                if name == "set" {
                     return format!(
                         "new() {{ {} }}",
                         call_expr
@@ -639,12 +645,6 @@ impl TranslationContext {
                             .join(", ")
                     );
                 }
-
-                name = if name.ends_with("sys.exit") {
-                    name.replace("sys.exit", "throw new InvalidOperationException")
-                } else {
-                    name
-                };
 
                 if name == "len" && call_expr.args.len() == 1 {
                     format!(
@@ -657,9 +657,7 @@ impl TranslationContext {
                             .join(", ")
                     )
                 } else {
-                    let new = if name.as_bytes()[0].is_ascii_uppercase()
-                        && (name == "Node" || name == "IndexWithMultitude")
-                    {
+                    let new = if name == "Node" || name == "IndexWithMultitude" || name == "Batch" {
                         "new "
                     } else {
                         ""
@@ -732,20 +730,19 @@ impl TranslationContext {
                 // C# does not have a power operator, so we must embed
                 // ** uses into a .Pow() helper method.
                 let op = def.op;
+
+                let lhs = self.visit_expr(*def.left);
+                let rhs = self.visit_expr(*def.right);
+
                 if op == Operator::Pow {
-                    return format!(
-                        "LongPower({}, {})",
-                        self.visit_expr(*def.left),
-                        self.visit_expr(*def.right)
-                    );
+                    return format!("LongPower({}, {})", lhs, rhs);
                 }
 
-                format!(
-                    "(({}) {} ({}))",
-                    self.visit_expr(*def.left),
-                    op_to_string(def.op),
-                    self.visit_expr(*def.right)
-                )
+                if op == Operator::Mod {
+                    return format!("Mod({}, {})", lhs, rhs);
+                }
+
+                format!("(({}) {} ({}))", lhs, op_to_string(def.op), rhs)
             }
             ast::Expr::UnaryOp(def) => {
                 format!(
@@ -754,7 +751,6 @@ impl TranslationContext {
                     self.visit_expr(*def.operand)
                 )
             }
-            // TODO: Handle generators?
             ast::Expr::List(def) => {
                 format!(
                     "new () {{ {} }}",
@@ -774,16 +770,18 @@ impl TranslationContext {
                         self.visit_expr(*def.slice)
                     )
                 } else {
-                    format!(
-                        "{}[{}]",
-                        self.visit_expr(*def.value),
-                        self.visit_expr(*def.slice)
-                    )
+                    let val = self.visit_expr(*def.value);
+                    let idx = self.visit_expr(*def.slice);
+                    if ["indices", "triple", "pair", "nodesToTerms[idx]"].contains(&val.as_str())
+                        && (idx == "0" || idx == "1" || idx == "2")
+                    {
+                        format!("{}.Item{}", val, idx.parse::<i32>().unwrap() + 1)
+                    } else {
+                        format!("{}[{}]", val, idx)
+                    }
                 }
             }
             ast::Expr::Slice(def) => {
-                //assert_eq!(def.step.is_none(), false);
-
                 format!(
                     ".Slice({}, {}, {})",
                     if def.lower.is_none() {
@@ -991,6 +989,8 @@ fn main() {
         owning_class: None,
         owning_function: None,
         output: String::new(),
+        line_index: LineIndex::from_source_text(&python_source),
+        current_line: 0,
     };
 
     for stmt in ast {
