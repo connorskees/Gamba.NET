@@ -59,14 +59,14 @@ fn make_rules() -> Vec<Rewrite<Expr, ()>> {
         rewrite!("power-zero"; "(** ?a 0)" => "1"),
         rewrite!("power-one"; "(** ?a 1)" => "?a"),
         // Negation rules
-        // afaict these are implemented below by __check_bitwise_negations but
+        // afaict this is implemented below by __check_bitwise_negations but
         // with better heuristics
         // rewrite!("minus-to-neg-add"; "(- ?a)" => "(+ (~ ?a) 1)"),
-        // rewrite!("to-neg"; "(+ (~ ?a) 1)" => "(~ ?a)"),
+        rewrite!("to-neg"; "(+ (~ ?a) 1)" => "(- ?a)"),
         // ported rules:
         // __eliminate_nested_negations_advanced
-        rewrite!("negate-twice"; "(- (- ?a))" => "(& ?a)"),
-        rewrite!("not-twice"; "(~ (~ ?a))" => "(& ?a)"),
+        rewrite!("negate-twice"; "(- (- ?a))" => "(?a)"),
+        rewrite!("not-twice"; "(~ (~ ?a))" => "(?a)"),
         // __check_bitwise_negations
         // bitwise -> arith
         rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
