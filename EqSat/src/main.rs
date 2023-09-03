@@ -37,25 +37,40 @@ pub struct BitwisePowerOfTwoFactorApplier {
     yFactor: String,
 }
 
+impl Expr {
+    pub fn num(&self) -> Option<i64> {
+        match self {
+            Expr::Constant(n) => Some(*n),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ConstantFold;
 impl Analysis<Expr> for ConstantFold {
     type Data = Option<(i64, PatternAst<Expr>)>;
 
     fn make(egraph: &EEGraph, enode: &Expr) -> Self::Data {
-        let x = |i: &Id| egraph[*i].data.as_ref().map(|d| d.0);
+        let x = |i: &Id| egraph[*i].data.as_ref().map(|c| c.0);
+        //println!("applying const prop to: {}", enode);
         Some(match enode {
-            Expr::Constant(c) => (*c, format!("{}", c).parse().unwrap()),
-            Expr::Add([a, b]) => (
-                x(a)? + x(b)?,
-                format!("(+ {} {})", x(a)?, x(b)?).parse().unwrap(),
-            ),
+            Expr::Constant(c) => {
+                let msg = format!("{}", c).parse().unwrap();
+                //println!("constant const prop: {}", msg);
+                (*c, msg)
+            }
+            Expr::Add([a, b]) => {
+                let msg = format!("(+ {} {})", x(a)?, x(b)?).parse().unwrap();
+                //println!("add const prop: {}", msg);
+                (x(a)? + x(b)?, msg)
+            }
             Expr::Mul([a, b]) => (
                 x(a)? * x(b)?,
                 format!("(* {} {})", x(a)?, x(b)?).parse().unwrap(),
             ),
             Expr::Pow([a, b]) => (
-                x(a)?.pow(x(b)?.try_into().unwrap()),
+                x(a)?.pow((x(b)?).try_into().unwrap()),
                 format!("(** {} {})", x(a)?, x(b)?).parse().unwrap(),
             ),
             Expr::And([a, b]) => (
@@ -83,24 +98,13 @@ impl Analysis<Expr> for ConstantFold {
     }
 
     fn modify(egraph: &mut EEGraph, id: Id) {
-        let data = egraph[id].data.clone();
-        if let Some((c, pat)) = data {
-            if egraph.are_explanations_enabled() {
-                egraph.union_instantiations(
-                    &pat,
-                    &format!("{}", c).parse().unwrap(),
-                    &Default::default(),
-                    "constant_fold".to_string(),
-                );
-            } else {
-                let added = egraph.add(Expr::Constant(c));
-                egraph.union(id, added);
-            }
-            // to not prune, comment this out
-            egraph[id].nodes.retain(|n| n.is_leaf());
-
-            #[cfg(debug_assertions)]
-            egraph[id].assert_unique_leaves();
+        if let Some(c) = egraph[id].data.clone() {
+            egraph.union_instantiations(
+                &c.1,
+                &c.0.to_string().parse().unwrap(),
+                &Default::default(),
+                "analysis".to_string(),
+            );
         }
     }
 }
@@ -160,6 +164,7 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
             }
         };
 
+        panic!("foobar");
         let parsed: RecExpr<Expr> = factored.parse().unwrap();
         let res = egraph.add_expr(&parsed);
 
@@ -209,34 +214,33 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("mul-one"; "(* ?a 1)" => "?a"),
         rewrite!("mul-commutativity"; "(* ?a ?b)" => "(* ?b ?a)"),
         rewrite!("mul-associativity"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
-        //rewrite!("mul-distributivity-expand"; "(* ?a (+ ?b ?c))" => "+ (* ?a ?b) (* a ?c)"),
+        rewrite!("mul-distributivity-expand"; "(* ?a (+ ?b ?c))" => "(+ (* ?a ?b) (* ?a ?c))"), // formally proved
         // Power rules
         rewrite!("power-zero"; "(** ?a 0)" => "1"),
         rewrite!("power-one"; "(** ?a 1)" => "?a"),
         // ported rules:
         // __eliminate_nested_negations_advanced
-        //rewrite!("negate-twice"; "(- (- ?a))" => "(?a)"),
-        rewrite!("minus-twice"; "(* (* ?a -1) -1) -1" => "(?a)"),
-        rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),
+        rewrite!("minus-twice"; "(* (* ?a -1) -1))" => "(?a)"), // formally proved
+        rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),       // formally proved
         // __check_bitwise_negations
         // bitwise -> arith
         //rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
-        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"),
+        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"), // formally proven
         //rewrite!("sub-bitwise-negation"; "(- (~ ?a) ?b)" => "(- (- (- ?a) 1) ?b)"),
-        rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (* ?b -1))" => "(+ (+ (* ?a -1) -1) (* ?b -1))"),
+        rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (* ?b -1))" => "(+ (+ (* ?a -1) -1) (* ?b -1))"), // formally proven
         //rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (- (- ?a) 1) ?b)"),
-        rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (* ?a -1) -1) ?b)"),
+        rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (* ?a -1) -1) ?b)"), // formally proven at reduced bit width(but it's still correct at all bitwidths)
         //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (- (- ?a) 1) ?b)"),
         rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (* ?a -1) -1) ?b)"),
         // arith -> bitwise
         //rewrite!("and-bitwise-negation"; "(& (- (- ?a) 1) ?b)" => "(& (~ ?a) ?b)"),
-        rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"),
+        //rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"),
         //rewrite!("or-bitwise-negation"; "(| (- (- ?a) 1) ?b)" => "(| (~ ?a) ?b)"),
-        rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"),
+        //rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"),
         //rewrite!("xor-bitwise-negation"; "(^ (- (- ?a) 1) ?b)" => "(^ (~ ?a) ?b)"),
-        rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -11) ?b)" => "(^ (~ ?a) ?b)"),
+        //rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"),
         // __check_bitwise_powers_of_two
-        rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => {
+        rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => { // not formally proved but most likely bug free
             BitwisePowerOfTwoFactorApplier {
                 xFactor : "?factor1".to_owned(),
                 yFactor : "?factor2".to_owned(),
@@ -244,26 +248,26 @@ fn make_rules() -> Vec<Rewrite> {
         } if (is_power_of_two("?factor1", "?factor2"))),
         // __check_beautify_constants_in_products: todo
         // __check_move_in_bitwise_negations
-        rewrite!("and-move-bitwise-negation-in"; "(~ (& (~ ?a) ?b))" => "(& ?a (~ ?b))"),
-        rewrite!("or-move-bitwise-negation-in"; "(~ (| (~ ?a) ?b))" => "(| ?a (~ ?b))"),
-        rewrite!("xor-move-bitwise-negation-in"; "(~ (^ (~ ?a) ?b))" => "(^ ?a (~ ?b))"),
+        rewrite!("and-move-bitwise-negation-in"; "(~ (& (~ ?a) ?b))" => "(| ?a (~ ?b))"), // formally proved
+        rewrite!("or-move-bitwise-negation-in"; "(~ (| (~ ?a) ?b))" => "(& ?a (~ ?b))"), // formally proved
+        rewrite!("xor-move-bitwise-negation-in"; "(~ (^ (~ ?a) ?b))" => "(^ ?a ?b)"), // formally proved
         // __check_bitwise_negations_in_excl_disjunctions
-        rewrite!("xor-flip-negations"; "(^ (~ ?a) (~ ?b))" => "(^ ?a ?b)"),
+        rewrite!("xor-flip-negations"; "(^ (~ ?a) (~ ?b))" => "(^ ?a ?b)"), // formally proved
         // __check_rewrite_powers: todo
         // __check_resolve_product_of_powers
         // note: they say "Moreover merge factors that occur multiple times",
         // but I'm not sure what they mean
         rewrite!("merge-power-same-base"; "(* (** ?a ?b) (** ?a ?c))" => "(** ?a (+ ?b ?c))"),
         // __check_resolve_product_of_constant_and_sum
-        rewrite!("distribute-constant-to-sum"; "(* (+ ?a ?b) Constant)" => "(+ (* ?a Constant) (* ?b Constant))"),
+        //rewrite!("distribute-constant-to-sum"; "(* (+ ?a ?b) Constant)" => "(+ (* ?a Constant) (* ?b Constant))"),
         // __check_factor_out_of_sum
-        rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
+        rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"), // formally proved
         // __check_resolve_inverse_negations_in_sum
-        rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"),
-        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"),
-        // __insert_fixed_in_conj: todo
-        // __insert_fixed_in_disj: todo
-        // __check_trivial_xor: implemented above
+        rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"), // formally proved
+        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"), // formally proved
+                                                                                               // __insert_fixed_in_conj: todo
+                                                                                               // __insert_fixed_in_disj: todo
+                                                                                               // __check_trivial_xor: implemented above
     ]
 }
 
@@ -329,7 +333,10 @@ fn simplify(s: &str) -> String {
 
     // simplify the expression using a Runner, which creates an e-graph with
     // the given expression and runs the given rules over it
-    let runner = Runner::default().with_expr(&expr).run(&make_rules());
+    let mut runner = Runner::default()
+        .with_explanations_enabled()
+        .with_expr(&expr)
+        .run(&make_rules());
 
     // the Runner knows which e-class the expression given with `with_expr` is in
     let root = runner.roots[0];
@@ -338,6 +345,12 @@ fn simplify(s: &str) -> String {
     let extractor = Extractor::new(&runner.egraph, AstSize);
     let (best_cost, best) = extractor.find_best(root);
     println!("Simplified {} to {} with cost {}", expr, best, best_cost);
+
+    println!(
+        "explained: {}",
+        runner.explain_equivalence(&expr, &best).get_flat_string()
+    );
+
     best.to_string()
 }
 
@@ -356,7 +369,8 @@ fn main() {
         "(^ (^ (~ x) (~ y)) z)".to_owned()
     };
 
-    println!("Attempting to simplify expression: {}", expr);
+    println!("AAttempting to simplify expression: {}", expr);
 
-    println!("{}", simplify(expr.as_str()));
+    let simplified = simplify(expr.as_str());
+    println!("{}", simplified);
 }
