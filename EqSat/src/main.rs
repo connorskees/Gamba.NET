@@ -14,7 +14,6 @@ define_language! {
     pub enum Expr {
         // arithmetic operations
         "+" = Add([Id; 2]),        // (+ a b)
-        "-" = UnaryMinus([Id; 1]), // (- a)
         "*" = Mul([Id; 2]),        // (* a b)
         "**" = Pow([Id; 2]),       // (** a b)
         // bitwise operations
@@ -55,7 +54,6 @@ impl Analysis<Expr> for ConstantFold {
                 x(a)? * x(b)?,
                 format!("(* {} {})", x(a)?, x(b)?).parse().unwrap(),
             ),
-            Expr::UnaryMinus([a]) => (0 - x(a)?, format!("(- {})", x(a)?).parse().unwrap()),
             Expr::Pow([a, b]) => (
                 x(a)?.pow(x(b)?.try_into().unwrap()),
                 format!("(** {} {})", x(a)?, x(b)?).parse().unwrap(),
@@ -203,7 +201,7 @@ fn make_rules() -> Vec<Rewrite> {
         // Add rules
         rewrite!("add-itself"; "(+ ?a ?a)" => "(* ?a 2)"),
         rewrite!("add-zero"; "(+ ?a 0)" => "?a"),
-        rewrite!("add-cancellation"; "(+ ?a (- ?a))" => "0"),
+        rewrite!("add-cancellation"; "(+ ?a (* ?a -1))" => "0"),
         rewrite!("add-commutativity"; "(+ ?a ?b)" => "(+ ?b ?a)"),
         rewrite!("add-associativity"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
         // Mul rules
@@ -217,25 +215,26 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("power-one"; "(** ?a 1)" => "?a"),
         // ported rules:
         // __eliminate_nested_negations_advanced
-        rewrite!("negate-twice"; "(- (- ?a))" => "(?a)"),
-        rewrite!("not-twice"; "(~ (~ ?a))" => "(?a)"),
+        //rewrite!("negate-twice"; "(- (- ?a))" => "(?a)"),
+        rewrite!("minus-twice"; "(* (* ?a -1) -1) -1" => "(?a)"),
+        rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),
         // __check_bitwise_negations
         // bitwise -> arith
         //rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
-        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (- ?a) -1) ?b)"),
+        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"),
         //rewrite!("sub-bitwise-negation"; "(- (~ ?a) ?b)" => "(- (- (- ?a) 1) ?b)"),
-        rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (- ?b))" => "(+ (+ (- ?a) -1) (- ?b))"),
+        rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (* ?b -1))" => "(+ (+ (* ?a -1) -1) (* ?b -1))"),
         //rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (- (- ?a) 1) ?b)"),
-        rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (- ?a) -1) ?b)"),
+        rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (* ?a -1) -1) ?b)"),
         //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (- (- ?a) 1) ?b)"),
-        rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (- ?a) -11) ?b)"),
+        rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (* ?a -1) -1) ?b)"),
         // arith -> bitwise
         //rewrite!("and-bitwise-negation"; "(& (- (- ?a) 1) ?b)" => "(& (~ ?a) ?b)"),
-        rewrite!("and-bitwise-negation"; "(& (+ (- ?a) -1) ?b)" => "(& (~ ?a) ?b)"),
+        rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"),
         //rewrite!("or-bitwise-negation"; "(| (- (- ?a) 1) ?b)" => "(| (~ ?a) ?b)"),
-        rewrite!("or-bitwise-negation"; "(| (+ (- ?a) -1) ?b)" => "(| (~ ?a) ?b)"),
+        rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"),
         //rewrite!("xor-bitwise-negation"; "(^ (- (- ?a) 1) ?b)" => "(^ (~ ?a) ?b)"),
-        rewrite!("xor-bitwise-negation"; "(^ (+ (- ?a) -11) ?b)" => "(^ (~ ?a) ?b)"),
+        rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -11) ?b)" => "(^ (~ ?a) ?b)"),
         // __check_bitwise_powers_of_two
         rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => {
             BitwisePowerOfTwoFactorApplier {
@@ -261,7 +260,7 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
         // __check_resolve_inverse_negations_in_sum
         rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"),
-        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(- ?a)"),
+        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"),
         // __insert_fixed_in_conj: todo
         // __insert_fixed_in_disj: todo
         // __check_trivial_xor: implemented above
@@ -296,7 +295,6 @@ fn is_power_of_two(var: &str, var2Str: &str) -> impl Fn(&mut EEGraph, Id, &Subst
 
         match child {
             Expr::Add(_) => println!("add"),
-            Expr::UnaryMinus(_) => println!("UnaryMinus"),
             Expr::Mul(_) => println!("Mul"),
             Expr::Pow(_) => println!("Pow"),
             Expr::And(_) => println!("And"),
