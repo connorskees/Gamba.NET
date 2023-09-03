@@ -1,4 +1,5 @@
 use core::panic;
+use std::time::Duration;
 
 use egg::*;
 
@@ -35,6 +36,12 @@ struct BitwiseAnalysis;
 pub struct BitwisePowerOfTwoFactorApplier {
     xFactor: String,
     yFactor: String,
+}
+
+#[derive(Debug)]
+pub struct DuplicateChildrenMulAddApplier {
+    constFactor: String,
+    xFactor: String,
 }
 
 impl Expr {
@@ -177,6 +184,43 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
     }
 }
 
+impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
+    fn apply_one(
+        &self,
+        egraph: &mut EEGraph,
+        eclass: Id,
+        subst: &Subst,
+        searcher_ast: Option<&PatternAst<Expr>>,
+        rule_name: Symbol,
+    ) -> Vec<Id> {
+        let constExpr = &egraph[subst[self.constFactor.parse().unwrap()]]
+            .nodes
+            .first()
+            .unwrap();
+
+        let xExpr = &egraph[subst[self.xFactor.parse().unwrap()]]
+            .nodes
+            .first()
+            .unwrap();
+
+        let constFactor: i64 = match constExpr {
+            &&Expr::Constant(def) => def,
+            _ => panic!("factor must be constant!"),
+        };
+
+        let factored = format!("(* {} {})", constFactor + 1, self.xFactor);
+        let parsed: RecExpr<Expr> = factored.parse().unwrap();
+        let res = egraph.add_expr(&parsed);
+
+        let mut results: Vec<Id> = vec![];
+        egraph.union(eclass, res);
+        results.push(res);
+        results.push(eclass);
+        return results;
+        panic!("foobar!")
+    }
+}
+
 fn var(s: &str) -> Symbol {
     s.parse().unwrap()
 }
@@ -218,6 +262,13 @@ fn make_rules() -> Vec<Rewrite> {
         // Power rules
         rewrite!("power-zero"; "(** ?a 0)" => "1"),
         rewrite!("power-one"; "(** ?a 1)" => "?a"),
+        // __check_duplicate_children
+        rewrite!("expanded-add"; "(+ (* ?const ?x) ?x)" => {
+            DuplicateChildrenMulAddApplier {
+                constFactor : "?const".to_owned(),
+                xFactor : "?x".to_owned(),
+            }
+        } if is_const("?const")),
         // ported rules:
         // __eliminate_nested_negations_advanced
         rewrite!("minus-twice"; "(* (* ?a -1) -1))" => "(?a)"), // formally proved
@@ -233,12 +284,9 @@ fn make_rules() -> Vec<Rewrite> {
         //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (- (- ?a) 1) ?b)"),
         rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (* ?a -1) -1) ?b)"),
         // arith -> bitwise
-        //rewrite!("and-bitwise-negation"; "(& (- (- ?a) 1) ?b)" => "(& (~ ?a) ?b)"),
-        //rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"),
-        //rewrite!("or-bitwise-negation"; "(| (- (- ?a) 1) ?b)" => "(| (~ ?a) ?b)"),
-        //rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"),
-        //rewrite!("xor-bitwise-negation"; "(^ (- (- ?a) 1) ?b)" => "(^ (~ ?a) ?b)"),
-        //rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"),
+        rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"), // formally proved
+        rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"), // formally proved
+        rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"), // formally proved
         // __check_bitwise_powers_of_two
         rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => { // not formally proved but most likely bug free
             BitwisePowerOfTwoFactorApplier {
@@ -271,6 +319,18 @@ fn make_rules() -> Vec<Rewrite> {
     ]
 }
 
+fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
+    let var = var.parse().unwrap();
+
+    move |egraph, _, subst| {
+        if let Some(c) = &egraph[subst[var]].data {
+            return true;
+        } else {
+            return false;
+        };
+    }
+}
+
 fn is_power_of_two(var: &str, var2Str: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
     let var2: Var = var2Str.parse().unwrap();
@@ -288,10 +348,6 @@ fn is_power_of_two(var: &str, var2Str: &str) -> impl Fn(&mut EEGraph, Id, &Subst
         } else {
             false
         };
-
-        if let Some(c) = &egraph[subst[var]].data {
-            println!("Some: {}", c.0);
-        }
 
         // println!("{}", &egraph[subst[var2]].nodes.len());
         let child = &egraph[subst[var]].nodes.first().unwrap();
@@ -331,12 +387,20 @@ fn simplify(s: &str) -> String {
     // parse the expression, the type annotation tells it which Language to use
     let expr: RecExpr<Expr> = s.parse().unwrap();
 
-    // simplify the expression using a Runner, which creates an e-graph with
-    // the given expression and runs the given rules over it
-    let mut runner = Runner::default()
-        .with_explanations_enabled()
-        .with_expr(&expr)
-        .run(&make_rules());
+    // Create the runner. You can enable explain_equivalence to explain the equivalence,
+    // but it comes at a severe performance penalty.
+    let explain_equivalence = false;
+    let mut runner: Runner<Expr, ConstantFold> = if explain_equivalence {
+        Runner::default()
+            .with_time_limit(Duration::from_millis(1000))
+            .with_expr(&expr)
+    } else {
+        Runner::default()
+            .with_explanations_enabled()
+            .with_expr(&expr)
+    };
+
+    runner = runner.run(&make_rules());
 
     // the Runner knows which e-class the expression given with `with_expr` is in
     let root = runner.roots[0];
@@ -344,12 +408,14 @@ fn simplify(s: &str) -> String {
     // use an Extractor to pick the best element of the root eclass
     let extractor = Extractor::new(&runner.egraph, AstSize);
     let (best_cost, best) = extractor.find_best(root);
-    println!("Simplified {} to {} with cost {}", expr, best, best_cost);
+    println!("Simplified {} to {} with  cost {}", expr, best, best_cost);
 
-    println!(
-        "explained: {}",
-        runner.explain_equivalence(&expr, &best).get_flat_string()
-    );
+    if explain_equivalence {
+        println!(
+            "explained: {}",
+            runner.explain_equivalence(&expr, &best).get_flat_string()
+        );
+    }
 
     best.to_string()
 }
@@ -369,7 +435,7 @@ fn main() {
         "(^ (^ (~ x) (~ y)) z)".to_owned()
     };
 
-    println!("AAttempting to simplify expression: {}", expr);
+    println!("Attempting to simplify expression: {}", expr);
 
     let simplified = simplify(expr.as_str());
     println!("{}", simplified);
