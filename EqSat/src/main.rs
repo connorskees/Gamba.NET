@@ -345,7 +345,21 @@ fn simplify(s: &str) -> String {
 }
 
 fn main() {
-    println!("Hello, world!");
+    // Get the program arguments.
+    let mut args = std::env::args();
 
-    println!("{}", simplify("(& (* 4 x) (* 8 y))"));
+    // Skip the first argument since it's always the path to the current program.
+    args.next();
+
+    // Read the optional expression to simplify.
+    let next = args.next();
+    let expr = if next.is_some() {
+        next.unwrap()
+    } else {
+        "(~ 23434)".to_owned()
+    };
+
+    println!("Attempting to simplify expression: {}", expr);
+
+    println!("{}", simplify(expr.as_str()));
 }
