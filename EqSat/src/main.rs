@@ -210,16 +210,11 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("mul-zero"; "(* ?a 0)" => "0"),
         rewrite!("mul-one"; "(* ?a 1)" => "?a"),
         rewrite!("mul-commutativity"; "(* ?a ?b)" => "(* ?b ?a)"),
-        //rewrite!("mul-associativity"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
+        rewrite!("mul-associativity"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
         //rewrite!("mul-distributivity-expand"; "(* ?a (+ ?b ?c))" => "+ (* ?a ?b) (* a ?c)"),
         // Power rules
         rewrite!("power-zero"; "(** ?a 0)" => "1"),
         rewrite!("power-one"; "(** ?a 1)" => "?a"),
-        // Negation rules
-        // afaict this is implemented below by __check_bitwise_negations but
-        // with better heuristics
-        // rewrite!("minus-to-neg-add"; "(- ?a)" => "(+ (~ ?a) 1)"),
-        rewrite!("to-neg"; "(+ (~ ?a) 1)" => "(- ?a)"),
         // ported rules:
         // __eliminate_nested_negations_advanced
         rewrite!("negate-twice"; "(- (- ?a))" => "(?a)"),
@@ -227,17 +222,21 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_bitwise_negations
         // bitwise -> arith
         //rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
+        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (- ?a) -1) ?b)"),
         //rewrite!("sub-bitwise-negation"; "(- (~ ?a) ?b)" => "(- (- (- ?a) 1) ?b)"),
+        rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (- ?b))" => "(+ (+ (- ?a) -1) (- ?b))"),
         //rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (- (- ?a) 1) ?b)"),
-        //rewrite!("div-bitwise-negation"; "(// (~ ?a) ?b)" => "(// (- (- ?a) 1) ?b)"),
+        rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (- ?a) -1) ?b)"),
         //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (- (- ?a) 1) ?b)"),
-        //rewrite!("rem-bitwise-negation"; "(% (~ ?a) ?b)" => "(% (- (- ?a) 1) ?b)"),
+        rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (- ?a) -11) ?b)"),
         // arith -> bitwise
         //rewrite!("and-bitwise-negation"; "(& (- (- ?a) 1) ?b)" => "(& (~ ?a) ?b)"),
+        rewrite!("and-bitwise-negation"; "(& (+ (- ?a) -1) ?b)" => "(& (~ ?a) ?b)"),
         //rewrite!("or-bitwise-negation"; "(| (- (- ?a) 1) ?b)" => "(| (~ ?a) ?b)"),
+        rewrite!("or-bitwise-negation"; "(| (+ (- ?a) -1) ?b)" => "(| (~ ?a) ?b)"),
         //rewrite!("xor-bitwise-negation"; "(^ (- (- ?a) 1) ?b)" => "(^ (~ ?a) ?b)"),
-        // __check_bitwise_powers_of_two: todo
-        //rewrite!("bitwise_powers_of_two: "; "(& (* ?factor ?x) (* ?factor y))" => "1" if is_power_of_two("factor") && is_power_of_two("")),
+        rewrite!("xor-bitwise-negation"; "(^ (+ (- ?a) -11) ?b)" => "(^ (~ ?a) ?b)"),
+        // __check_bitwise_powers_of_two
         rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => {
             BitwisePowerOfTwoFactorApplier {
                 xFactor : "?factor1".to_owned(),
@@ -356,7 +355,7 @@ fn main() {
     let expr = if next.is_some() {
         next.unwrap()
     } else {
-        "(~ 23434)".to_owned()
+        "(^ (^ (~ x) (~ y)) z)".to_owned()
     };
 
     println!("Attempting to simplify expression: {}", expr);
