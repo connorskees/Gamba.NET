@@ -392,7 +392,7 @@ fn simplify(s: &str) -> String {
     let explain_equivalence = false;
     let mut runner: Runner<Expr, ConstantFold> = if explain_equivalence {
         Runner::default()
-            .with_time_limit(Duration::from_millis(1000))
+            .with_time_limit(Duration::from_millis(5))
             .with_expr(&expr)
     } else {
         Runner::default()
@@ -400,7 +400,9 @@ fn simplify(s: &str) -> String {
             .with_expr(&expr)
     };
 
-    runner = runner.run(&make_rules());
+    let rules = make_rules();
+    println!("made rules");
+    runner = runner.run(&rules);
 
     // the Runner knows which e-class the expression given with `with_expr` is in
     let root = runner.roots[0];
