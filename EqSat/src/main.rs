@@ -16,19 +16,16 @@ define_language! {
         "+" = Add([Id; 2]),        // (+ a b)
         "-" = UnaryMinus([Id; 1]), // (- a)
         "*" = Mul([Id; 2]),        // (* a b)
-        "//" = Div([Id; 2]),       // (| a b)
-        "%" = Rem([Id; 2]),        // (% a b)
         "**" = Pow([Id; 2]),       // (** a b)
         // bitwise operations
         "&" = And([Id; 2]),        // (& a b)
         "|" = Or([Id; 2]),         // (| a b)
         "^" = Xor([Id; 2]),        // (^ a b)
-        "~" = Not([Id; 1]),        // (~ a)
+        "~" = Neg([Id; 1]),        // (~ a)
 
         // Values:
         Constant(i64),             // (int)
         Symbol(Symbol),            // (x)
-
     }
 }
 
@@ -58,7 +55,25 @@ impl Analysis<Expr> for ConstantFold {
                 x(a)? * x(b)?,
                 format!("(* {} {})", x(a)?, x(b)?).parse().unwrap(),
             ),
-            _ => return None,
+            Expr::UnaryMinus([a]) => (0 - x(a)?, format!("(- {})", x(a)?).parse().unwrap()),
+            Expr::Pow([a, b]) => (
+                x(a)?.pow(x(b)?.try_into().unwrap()),
+                format!("(** {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Expr::And([a, b]) => (
+                x(a)? & x(b)?,
+                format!("(& {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Expr::Or([a, b]) => (
+                x(a)? | x(b)?,
+                format!("(| {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Expr::Xor([a, b]) => (
+                x(a)? ^ x(b)?,
+                format!("(^ {} {})", x(a)?, x(b)?).parse().unwrap(),
+            ),
+            Expr::Neg([a]) => (!x(a)?, format!("(~ {})", x(a)?).parse().unwrap()),
+            Expr::Symbol(_) => return None,
         })
     }
 
@@ -284,13 +299,11 @@ fn is_power_of_two(var: &str, var2Str: &str) -> impl Fn(&mut EEGraph, Id, &Subst
             Expr::Add(_) => println!("add"),
             Expr::UnaryMinus(_) => println!("UnaryMinus"),
             Expr::Mul(_) => println!("Mul"),
-            Expr::Div(_) => println!("add"),
-            Expr::Rem(_) => println!("add"),
             Expr::Pow(_) => println!("Pow"),
             Expr::And(_) => println!("And"),
             Expr::Or(_) => println!("Or"),
             Expr::Xor(_) => println!("Xor"),
-            Expr::Not(_) => println!("Not"),
+            Expr::Neg(_) => println!("Not"),
             Expr::Symbol(_) => println!("Symbol"),
             Expr::Constant(_) => println!("Constant"),
         }
