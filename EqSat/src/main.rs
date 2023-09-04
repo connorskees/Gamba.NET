@@ -1,10 +1,10 @@
-use core::{panic, time};
+use core::panic;
 use std::time::Duration;
 
 use egg::*;
 
-pub type ApplierEGraph = egg::EGraph<Expr, BitwiseAnalysis>;
-pub type ApplierREwrite = egg::Rewrite<Expr, BitwiseAnalysis>;
+type ApplierEGraph = egg::EGraph<Expr, BitwiseAnalysis>;
+type ApplierREwrite = egg::Rewrite<Expr, BitwiseAnalysis>;
 
 pub type EEGraph = egg::EGraph<Expr, ConstantFold>;
 pub type Rewrite = egg::Rewrite<Expr, ConstantFold>;
@@ -34,14 +34,14 @@ struct BitwiseAnalysis;
 
 #[derive(Debug)]
 pub struct BitwisePowerOfTwoFactorApplier {
-    xFactor: String,
-    yFactor: String,
+    x_factor: String,
+    y_factor: String,
 }
 
 #[derive(Debug)]
 pub struct DuplicateChildrenMulAddApplier {
-    constFactor: String,
-    xFactor: String,
+    const_factor: String,
+    x_factor: String,
 }
 
 impl Expr {
@@ -150,7 +150,7 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         };
         */
 
-        let x_factor_data = &egraph[subst[self.xFactor.parse().unwrap()]].data;
+        let x_factor_data = &egraph[subst[self.x_factor.parse().unwrap()]].data;
         let x_factor_constant: i64 = match x_factor_data {
             Some(c) => c.0,
             None => panic!("factor must be constant!"),
@@ -183,7 +183,7 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         };
         */
 
-        let y_factor_data = &egraph[subst[self.yFactor.parse().unwrap()]].data;
+        let y_factor_data = &egraph[subst[self.y_factor.parse().unwrap()]].data;
         let y_factor_constant: i64 = match y_factor_data {
             Some(c) => c.0,
             None => panic!("factor must be constant!"),
@@ -225,7 +225,7 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
             egraph.add(Expr::Mul([min_id, rhs]))
         };
 
-        if (egraph.union(eclass, factored)) {
+        if egraph.union(eclass, factored) {
             return vec![factored];
         } else {
             return vec![];
@@ -242,7 +242,7 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         searcher_ast: Option<&PatternAst<Expr>>,
         rule_name: Symbol,
     ) -> Vec<Id> {
-        let newConstExpr = &egraph[subst[self.constFactor.parse().unwrap()]].data;
+        let new_const_expr = &egraph[subst[self.const_factor.parse().unwrap()]].data;
 
         /*
         let constExpr = &egraph[subst[self.constFactor.parse().unwrap()]]
@@ -256,7 +256,7 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         };
         */
 
-        let constFactor: i64 = match newConstExpr {
+        let const_factor: i64 = match new_const_expr {
             Some(c) => c.0,
             None => panic!("factor must be constant!"),
         };
@@ -266,13 +266,13 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
             // println!("original: {}", pair);
         }
 
-        let x = subst[self.xFactor.parse().unwrap()];
+        let x = subst[self.x_factor.parse().unwrap()];
 
-        let newConst = egraph.add(Expr::Constant(constFactor + 1));
-        let newExpr = egraph.add(Expr::Mul([newConst, x]));
+        let new_const = egraph.add(Expr::Constant(const_factor + 1));
+        let new_expr = egraph.add(Expr::Mul([new_const, x]));
 
-        if (egraph.union(eclass, newExpr)) {
-            return vec![newExpr];
+        if egraph.union(eclass, new_expr) {
+            return vec![new_expr];
         } else {
             return vec![];
         }
@@ -283,10 +283,10 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
 
         println!(
             "before factoring: ({} * {}) + {}",
-            constFactor, self.xFactor, self.xFactor
+            const_factor, self.x_factor, self.x_factor
         );
 
-        let factored = format!("(* {} {})", constFactor + 1, self.xFactor).replace("?", "");
+        let factored = format!("(* {} {})", const_factor + 1, self.x_factor).replace("?", "");
         println!("factored: {}", factored);
         let parsed: RecExpr<Expr> = factored.parse().unwrap();
         println!("parsed: {}", parsed);
@@ -347,8 +347,8 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_duplicate_children
         rewrite!("expanded-add"; "(+ (* ?const ?x) ?x)" => {
             DuplicateChildrenMulAddApplier {
-                constFactor : "?const".to_owned(),
-                xFactor : "?x".to_owned(),
+                const_factor : "?const".to_owned(),
+                x_factor : "?x".to_owned(),
             }
         } if is_const("?const")),
         // ported rules:
@@ -368,8 +368,8 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_bitwise_powers_of_two
         rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 ?y))" => { // not formally proved but most likely bug free
         BitwisePowerOfTwoFactorApplier {
-            xFactor : "?factor1".to_owned(),
-            yFactor : "?factor2".to_owned(),
+            x_factor : "?factor1".to_owned(),
+            y_factor : "?factor2".to_owned(),
                  }
          } if (is_power_of_two("?factor1", "?factor2"))),
         // __check_beautify_constants_in_products: todo
@@ -410,9 +410,9 @@ fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
     }
 }
 
-fn is_power_of_two(var: &str, var2Str: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
+fn is_power_of_two(var: &str, var_to_str: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
-    let var2: Var = var2Str.parse().unwrap();
+    let var2: Var = var_to_str.parse().unwrap();
 
     move |egraph, _, subst| {
         /* */
@@ -508,7 +508,7 @@ fn main() {
 
     let mut simplified = simplify(expr.as_str());
 
-    for i in 0..0 {
+    for _ in 0..0 {
         simplified = simplify(simplified.clone().as_ref());
     }
 
