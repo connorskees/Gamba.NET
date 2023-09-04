@@ -1,5 +1,5 @@
 use core::panic;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use egg::*;
 
@@ -453,16 +453,16 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("conj_disj_identity_rule_3"; "(& ?x (| (~ (* (* ?y -1) (~ ?x))) (* (~ ?x) -1)))" => "?x"), // formally proved
         // __check_disj_neg_disj_identity_rule
         // x|-(-x|2*x)
-        rewrite!("disj_neg_disj_identity_rule_1"; "(| ?x (* (| (* ?x -1) (* 2 ?x)) -1))" => "?x"), // formally proved
+        rewrite!("disj_neg_disj_identity_rule_1"; "(| ?x (* (| (* ?x -1) (* ?y ?x)) -1))" => "?x"), // formally proved
         // x|-(-x|-2*x)
-        rewrite!("disj_neg_disj_identity_rule_2"; "(| ?x (* (| (* ?x -1) (* (* 2 -1) ?x)) -1))" => "?x"), // formally proved
+        rewrite!("disj_neg_disj_identity_rule_2"; "(| ?x (* (| (* ?x -1) (* (* ?y -1) ?x)) -1))" => "?x"), // formally proved
         // __check_disj_sub_disj_identity_rule
         // x|(x|y)-y
-        rewrite!("disj_sub_disj_identity_rule"; "(| ?x (+ (| ?x ?y) (* ?y -1)))" => "?x"), // formally proved
+        rewrite!("disj_sub_disj_identity_rule_1"; "(| ?x (+ (| ?x ?y) (* ?y -1)))" => "?x"), // formally proved
         // __check_disj_sub_disj_identity_rule
         // todo: see above
         // x|x-(x&y)
-        rewrite!("disj_sub_disj_identity_rule"; "(| ?x (+ ?x (* (& ?x ?y) -1)))" => "?x"), // formally proved
+        rewrite!("disj_sub_disj_identity_rule_2"; "(| ?x (+ ?x (* (& ?x ?y) -1)))" => "?x"), // formally proved
         // __check_conj_add_conj_identity_rule
         // todo: see above
         // x&x+(~x&y)
@@ -551,6 +551,8 @@ fn simplify(s: &str) -> String {
 
     let rules = make_rules();
     println!("made rules");
+
+    let start = Instant::now();
     runner = runner.run(&rules);
 
     // the Runner knows which e-class the expression given with `with_expr` is in
@@ -559,6 +561,8 @@ fn simplify(s: &str) -> String {
     // use an Extractor to pick the best element of the root eclass
     let extractor = Extractor::new(&runner.egraph, AstSize);
     let (best_cost, best) = extractor.find_best(root);
+    let duration = start.elapsed();
+    println!("Time elapsed in simplify() is: {:?}", duration);
     println!("Simplified {} to {} with  cost {}", expr, best, best_cost);
 
     if explain_equivalence {
@@ -583,7 +587,7 @@ fn main() {
     let expr = if next.is_some() {
         next.unwrap()
     } else {
-        "(+ (+ (+ (+ (+ (+ (* (* (* 36 -1) y) (& x y)) (* (* (* 19 y) (& x (~ y))) -1)) (* (* 20 y) (~ (& x (~ x))))) (* (* 6 y) (~ (& x (~ y))))) (* (* (* 36 y) (~ (| x y))) -1)) (* (* (* 25 y) (~ (| x (~ y)))) -1)) (* (* 11 y) (~ (^ x y))))".to_owned()
+        "(* y (+ (* (^ y x) -11) (+ (* (& x (~ y)) -19) (+ (* -36 (+ (& y x) (~ (| y x)))) (+ -31 (+ (* 6 (| y (~ x))) (* (& y (~ x)) -25)))))))".to_owned()
     };
 
     println!("Attempting to simplify expression: {}", expr);
