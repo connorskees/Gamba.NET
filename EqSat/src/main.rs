@@ -391,91 +391,91 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_resolve_inverse_negations_in_sum
         rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"), // formally proved
         // formally proved
-        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"),
+        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"), // formally proved
         // __insert_fixed_in_conj: todo
         // __insert_fixed_in_disj: todo
         // __check_trivial_xor: implemented above
         // __check_xor_same_mult_by_minus_one: todo
         // __check_conj_zero_rule
         // x&-x&2*x
-        rewrite!("conj_zero_rule"; "(& ?a (& (* ?a -1) (* ?a 2)))" => "0"),
+        rewrite!("conj_zero_rule"; "(& ?a (& (* ?a -1) (* ?a 2)))" => "0"), // formally proved
         // __check_conj_neg_xor_zero_rule
         // ~(2*x)&-(x^-x)
-        rewrite!("conj_neg_xor_zero_rule"; "(& (~ (* ?a 2)) (* (^ ?a (* ?a -1)) -1))" => "0"),
+        rewrite!("conj_neg_xor_zero_rule"; "(& (~ (* ?a 2)) (* (^ ?a (* ?a -1)) -1))" => "0"), // formally proved
         // __check_conj_neg_xor_minus_one_rule
         // 2*x|~-(x^-x)
-        rewrite!("conj_neg_xor_minus_one_rule"; "(| (* ?a 2) (~ (* (^ ?a (* ?a -1)) -1)))" => "-1"),
+        rewrite!("conj_neg_xor_minus_one_rule"; "(| (* ?a 2) (~ (* (^ ?a (* ?a -1)) -1)))" => "-1"), // formally proved
         // __check_conj_negated_xor_zero_rule
         // 2*x&~(x^-x)
-        rewrite!("conj_negated_xor_zero_rule"; "(& (* ?a 2) (~ (^ ?a (* ?a -1))))" => "0"),
+        rewrite!("conj_negated_xor_zero_rule"; "(& (* ?a 2) (~ (^ ?a (* ?a -1))))" => "0"), // formally proved
         // __check_conj_xor_identity_rule
         // 2*x&(x^-x)
-        rewrite!("conj_xor_identity_rule"; "(& (* ?a 2) (^ ?a (* ?a -1)))" => "(* ?a 2)"),
+        rewrite!("conj_xor_identity_rule"; "(& (* ?a 2) (^ ?a (* ?a -1)))" => "(* ?a 2)"), // formally proved
         // __check_disj_xor_identity_rule
         // 2*x|-(x^-x)
-        rewrite!("disj_xor_identity_rule"; "(| (* ?a 2) (* -1 (^ ?a (* ?a -1))))" => "(* ?a 2)"),
+        rewrite!("disj_xor_identity_rule"; "(| (* ?a 2) (* -1 (^ ?a (* ?a -1))))" => "(* ?a 2)"), // formally proved
         // __check_conj_neg_conj_identity_rule
         // -x&~(x&2*x)
-        rewrite!("conj_neg_conj_identity_rule_1"; "(& (* ?a -1) (~ (& ?a (* ?a 2))))" => "(* ?a -1)"),
+        rewrite!("conj_neg_conj_identity_rule_1"; "(& (* ?a -1) (~ (& ?a (* ?a 2))))" => "(* ?a -1)"), // formally proved
         // -x&~(x&-2*x)
-        rewrite!("conj_neg_conj_identity_rule_2"; "(& (* ?a -1) (~ (& ?a (* ?a -2))))" => "(* ?a -1)"),
+        rewrite!("conj_neg_conj_identity_rule_2"; "(& (* ?a -1) (~ (& ?a (* ?a -2))))" => "(* ?a -1)"), // formally proved
         // -x&(~x|~(2*x))
-        rewrite!("conj_neg_conj_identity_rule_3"; "(& (* ?a -1) (| (~ ?a) (~ (* ?a 2))))" => "(* ?a -1)"),
+        rewrite!("conj_neg_conj_identity_rule_3"; "(& (* ?a -1) (| (~ ?a) (~ (* ?a 2))))" => "(* ?a -1)"), // formally proved
         // -x&(~x|~(-2*x))
-        rewrite!("conj_neg_conj_identity_rule_4"; "(& (* ?a -1) (| (~ ?a) (~ (* ?a -2))))" => "(* ?a -1)"),
+        rewrite!("conj_neg_conj_identity_rule_4"; "(& (* ?a -1) (| (~ ?a) (~ (* ?a -2))))" => "(* ?a -1)"), // formally proved
         // __check_disj_disj_identity_rule
         // x|-(x|-x)
-        rewrite!("disj_disj_identity_rule"; "(| ?a (* (| ?a (* ?a -1)) -1))" => "?a"),
+        rewrite!("disj_disj_identity_rule"; "(| ?a (* (| ?a (* ?a -1)) -1))" => "?a"), // formally proved
         // __check_conj_conj_identity_rule
         // x&-(x&-x)
-        rewrite!("conj_conj_identity_rule"; "(& ?a (* (& ?a (* ?a -1)) -1))" => "?a"),
+        rewrite!("conj_conj_identity_rule"; "(& ?a (* (& ?a (* ?a -1)) -1))" => "?a"), // formally proved
         // __check_disj_conj_identity_rule
         // -x|(~x&2*x)
-        rewrite!("disj_conj_identity_rule_1"; "(| (* ?a -1) (& (~ ?a) (* ?a 2)))" => "(* ?a -1)"),
+        rewrite!("disj_conj_identity_rule_1"; "(| (* ?a -1) (& (~ ?a) (* ?a 2)))" => "(* ?a -1)"), // formally proved
         // -x|(~x&-2*x)
-        rewrite!("disj_conj_identity_rule_2"; "(| (* ?a -1) (& (~ ?a) (* ?a -2)))" => "(* ?a -1)"),
+        rewrite!("disj_conj_identity_rule_2"; "(| (* ?a -1) (& (~ ?a) (* ?a -2)))" => "(* ?a -1)"), // formally proved
         // -x|~(x|~(2*x))
-        rewrite!("disj_conj_identity_rule_3"; "(| (* ?a -1) (~ (| ?a (* ?a 2))))" => "(* ?a -1)"),
+        rewrite!("disj_conj_identity_rule_3"; "(| (* ?a -1) (~ (| ?a (~ (* ?a 2)))))" => "(* ?a -1)"), // formally proved
         // -x|~(x|~(-2*x))
-        rewrite!("disj_conj_identity_rule_4"; "(| (* ?a -1) (~ (| ?a (* ?a -2))))" => "(* ?a -1)"),
+        rewrite!("disj_conj_identity_rule_4"; "(| (* ?a -1) (~ (| ?a (~ (* ?a -2)))))" => "(* ?a -1)"), // formally proved
         // __check_disj_conj_identity_rule_2
         // x|(-~x&2*~x)
-        rewrite!("disj_conj_identity_rule_2_1"; "(| ?a (* (& (~ ?a) (* (~ ?a) 2)) -1))" => "?a"),
+        rewrite!("disj_conj_identity_rule_2_1"; "(| ?x (& (* (~ ?x) -1) (* 2 (~ ?x))))" => "?x"), // formally proved
         // x|(-~x&-2*~x)
-        rewrite!("disj_conj_identity_rule_2_2"; "(| ?a (* (& (~ ?a) (* (~ ?a) -2)) -1))" => "?a"),
+        rewrite!("disj_conj_identity_rule_2_2"; "(| ?x (& (* (~ ?x) -1) (* (* 2 -1) (~ ?x))))" => "?x"), // formally proved
         // __check_conj_disj_identity_rule
         // x&(-~(2*x)|-~x)
-        rewrite!("conj_disj_identity_rule_1"; "(& ?a (| (* (~ (* ?a 2)) -1) (* (~ ?a) -1)))" => "?a"),
-        // x&(~(2*x)|-~x)
-        rewrite!("conj_disj_identity_rule_2"; "(& ?a (| (~ (* ?a 2)) (* (~ ?a) -1)))" => "?a"),
+        rewrite!("conj_disj_identity_rule_1"; "(& ?x (| (* (~ (* 2 ?x)) -1) (* (~ ?x) -1)))" => "?x"), // formally proved - reprove up from here
+        // x&(~(2*~x)|-~x)
+        rewrite!("conj_disj_identity_rule_2"; "(& ?x (| (~ (* 2 (~ ?x))) (* (~ ?x) -1)))" => "?x"), // formally proved
         // x&(~(-2*~x)|-~x)
-        rewrite!("conj_disj_identity_rule_3"; "(& ?a (| (~ (* (~ ?a) -2)) (* (~ ?a) -1)))" => "?a"),
+        // Note that while GAMBA only solves this pattern for the constant '2', it is true if 'Y' is substituted with any value.
+        rewrite!("conj_disj_identity_rule_3"; "(& ?x (| (~ (* (* ?y -1) (~ ?x))) (* (~ ?x) -1)))" => "?x"), // formally proved
         // __check_disj_neg_disj_identity_rule
         // x|-(-x|2*x)
-        rewrite!("disj_neg_disj_identity_rule_1"; "(| ?a (* (| (* ?a -1) (* ?a 2)) -1))" => "?a"),
+        rewrite!("disj_neg_disj_identity_rule_1"; "(| ?x (* (| (* ?x -1) (* 2 ?x)) -1))" => "?x"), // formally proved
         // x|-(-x|-2*x)
-        rewrite!("disj_neg_disj_identity_rule_2"; "(| ?a (* (| (* ?a -1) (* ?a -2)) -1))" => "?a"),
+        rewrite!("disj_neg_disj_identity_rule_2"; "(| ?x (* (| (* ?x -1) (* (* 2 -1) ?x)) -1))" => "?x"), // formally proved
         // __check_disj_sub_disj_identity_rule
-        // todo: this one could be wrong bc of precedence
         // x|(x|y)-y
-        rewrite!("disj_sub_disj_identity_rule"; "(| ?a (+ (| ?a ?b) (* ?b -1)))" => "?a"),
+        rewrite!("disj_sub_disj_identity_rule"; "(| ?x (+ (| ?x ?y) (* ?y -1)))" => "?x"), // formally proved
         // __check_disj_sub_disj_identity_rule
         // todo: see above
         // x|x-(x&y)
-        rewrite!("disj_sub_disj_identity_rule"; "(| ?a (+ ?a (* (& ?a ?b) -1)))" => "?a"),
+        rewrite!("disj_sub_disj_identity_rule"; "(| ?x (+ ?x (* (& ?x ?y) -1)))" => "?x"), // formally proved
         // __check_conj_add_conj_identity_rule
         // todo: see above
         // x&x+(~x&y)
-        rewrite!("conj_add_conj_identity_rule"; "(& ?a (+ ?a (& (~ ?a) ?b)))" => "?a"),
+        rewrite!("conj_add_conj_identity_rule"; "(& ?x (+ ?x (& (~ ?x) ?y)))" => "?x"), // formally proved
         // __check_disj_disj_conj_rule
         // x|-(-y|(x&y))
-        rewrite!("disj_disj_conj_rule"; "(| ?a (* (| (* ?b -1) (& ?a ?b)) -1))" => "(| ?a ?b)"),
+        rewrite!("disj_disj_conj_rule"; "(| ?x (* (| (* ?y -1) (& ?x ?y)) -1))" => "(| ?x ?y)"), // formally proved
         // __check_conj_conj_disj_rule
         // x&-(-y&(x|y))
-        rewrite!("conj_conj_disj_rule"; "(& ?a (* (& (* ?b -1) (| ?a ?b)) -1))" => "(& ?a ?b)"),
+        rewrite!("conj_conj_disj_rule"; "(& ?x (* (& (* ?y -1) (| ?x ?y)) -1))" => "(& ?x ?y)"),
         // __check_disj_disj_conj_rule_2
         // -(-x|x&y&z)|x&y
-        rewrite!("disj_disj_conj_rule_2"; "(| (* (| (* ?a -1) (& ?a (& ?b ?c))) -1) (& ?a ?b))" => "?a"),
+        rewrite!("disj_disj_conj_rule_2"; "(| (* (| (* ?x -1) (& (& ?x ?y) ?z)) -1) (& ?x ?y))" => "?x"),
     ]
 }
 
