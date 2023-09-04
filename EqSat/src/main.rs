@@ -276,40 +276,40 @@ fn var(s: &str) -> Symbol {
 fn make_rules() -> Vec<Rewrite> {
     vec![
         // Or rules
-        //  rewrite!("or-zero"; "(| ?a 0)" => "?a"),
-        //  rewrite!("or-maxint"; "(| ?a -1)" => "-1"),
-        //  rewrite!("or-itself"; "(| ?a ?a)" => "?a"),
-        //  rewrite!("or-negated-itself"; "(| ?a (~ ?a))" => "-1"), // formally proved
-        // rewrite!("or-commutativity"; "(| ?a ?b)" => "(| ?b ?a)"), //  formally proved
-        //rewrite!("or-associativity"; "(| ?a (| ?b ?c))" => "(| (| ?a ?b) ?c)"), // formally proved
+        rewrite!("or-zero"; "(| ?a 0)" => "?a"),
+        rewrite!("or-maxint"; "(| ?a -1)" => "-1"),
+        rewrite!("or-itself"; "(| ?a ?a)" => "?a"),
+        rewrite!("or-negated-itself"; "(| ?a (~ ?a))" => "-1"), // formally proved
+        rewrite!("or-commutativity"; "(| ?a ?b)" => "(| ?b ?a)"), //  formally proved
+        rewrite!("or-associativity"; "(| ?a (| ?b ?c))" => "(| (| ?a ?b) ?c)"), // formally proved
         // Xor rules
-        //   rewrite!("xor-zero"; "(^ ?a 0)" => "?a"), // formally proved
-        //   rewrite!("xor-maxint"; "(^ ?a -1)" => "(~ ?a)"), // formally proved
-        //   rewrite!("xor-itself"; "(^ ?a ?a)" => "0"), // formally proved
-        //    rewrite!("xor-commutativity"; "(^ ?a ?b)" => "(^ ?b ?a)"),
-        //  rewrite!("xor-associativity"; "(^ ?a (^ ?b ?c))" => "(^ (^ ?a ?b) ?c)"), // formally proved
+        rewrite!("xor-zero"; "(^ ?a 0)" => "?a"), // formally proved
+        rewrite!("xor-maxint"; "(^ ?a -1)" => "(~ ?a)"), // formally proved
+        rewrite!("xor-itself"; "(^ ?a ?a)" => "0"), // formally proved
+        rewrite!("xor-commutativity"; "(^ ?a ?b)" => "(^ ?b ?a)"),
+        rewrite!("xor-associativity"; "(^ ?a (^ ?b ?c))" => "(^ (^ ?a ?b) ?c)"), // formally proved
         // And rules
-        // rewrite!("and-zero"; "(& ?a 0)" => "0"),
-        // rewrite!("and-maxint"; "(& ?a -1)" => "?a"), // formally proved
-        //  rewrite!("and-itself"; "(& ?a ?a)" => "?a"), // formally proved
-        //  rewrite!("and-negated-itself"; "(& ?a (~ ?a))" => "0"), // formally proved
-        //  rewrite!("and-commutativity"; "(& ?a ?b)" => "(& ?b ?a)"),
-        //     rewrite!("and-associativity"; "(& ?a (& ?b ?c))" => "(& (& ?a ?b) ?c)"), // formally proved
+        rewrite!("and-zero"; "(& ?a 0)" => "0"),
+        rewrite!("and-maxint"; "(& ?a -1)" => "?a"), // formally proved
+        rewrite!("and-itself"; "(& ?a ?a)" => "?a"), // formally proved
+        rewrite!("and-negated-itself"; "(& ?a (~ ?a))" => "0"), // formally proved
+        rewrite!("and-commutativity"; "(& ?a ?b)" => "(& ?b ?a)"),
+        rewrite!("and-associativity"; "(& ?a (& ?b ?c))" => "(& (& ?a ?b) ?c)"), // formally proved
         // Add rules
-        // rewrite!("add-itself"; "(+ ?a ?a)" => "(* ?a 2)"), // formally proved
-        // rewrite!("add-zero"; "(+ ?a 0)" => "?a"),          // formally proved
-        // rewrite!("add-cancellation"; "(+ ?a (* ?a -1))" => "0"), // formally proved
+        rewrite!("add-itself"; "(+ ?a ?a)" => "(* ?a 2)"), // formally proved
+        rewrite!("add-zero"; "(+ ?a 0)" => "?a"),          // formally proved
+        rewrite!("add-cancellation"; "(+ ?a (* ?a -1))" => "0"), // formally proved
         rewrite!("add-commutativity"; "(+ ?a ?b)" => "(+ ?b ?a)"), // formally proved
         rewrite!("add-associativity"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"), // formally proved
         // Mul rules
-        //  rewrite!("mul-zero"; "(* ?a 0)" => "0"),
-        // rewrite!("mul-one"; "(* ?a 1)" => "?a"),
+        rewrite!("mul-zero"; "(* ?a 0)" => "0"),
+        rewrite!("mul-one"; "(* ?a 1)" => "?a"),
         rewrite!("mul-commutativity"; "(* ?a ?b)" => "(* ?b ?a)"), // formally proved
-        //     rewrite!("mul-associativity"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"), // formally proved
-        //  rewrite!("mul-distributivity-expand"; "(* ?a (+ ?b ?c))" => "(+ (* ?a ?b) (* ?a ?c))"), // formally proved
+        rewrite!("mul-associativity"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"), // formally proved
+        rewrite!("mul-distributivity-expand"; "(* ?a (+ ?b ?c))" => "(+ (* ?a ?b) (* ?a ?c))"), // formally proved
         // Power rules
-        //  rewrite!("power-zero"; "(** ?a 0)" => "1"),
-        // rewrite!("power-one"; "(** ?a 1)" => "?a"),
+        rewrite!("power-zero"; "(** ?a 0)" => "1"),
+        rewrite!("power-one"; "(** ?a 1)" => "?a"),
         // __check_duplicate_children
         rewrite!("expanded-add"; "(+ (* ?const ?x) ?x)" => {
             DuplicateChildrenMulAddApplier {
@@ -319,51 +319,51 @@ fn make_rules() -> Vec<Rewrite> {
         } if is_const("?const")),
         // ported rules:
         // __eliminate_nested_negations_advanced
-        //   rewrite!("minus-twice"; "(* (* ?a -1) -1))" => "(?a)"), // formally proved
-        //    rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),       // formally proved
+        rewrite!("minus-twice"; "(* (* ?a -1) -1))" => "(?a)"), // formally proved
+        rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),       // formally proved
         // __check_bitwise_negations
         // bitwise -> arith
-        //rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
-        //   rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"), // formally proven
+        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
+        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"), // formally proven
         //rewrite!("sub-bitwise-negation"; "(- (~ ?a) ?b)" => "(- (- (- ?a) 1) ?b)"),
-        //     rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (* ?b -1))" => "(+ (+ (* ?a -1) -1) (* ?b -1))"), // formally proven
+        rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (* ?b -1))" => "(+ (+ (* ?a -1) -1) (* ?b -1))"), // formally proven
         //rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (- (- ?a) 1) ?b)"),
-        //    rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (* ?a -1) -1) ?b)"), // formally proven at reduced bit width(but it's still correct at all bitwidths)
+        rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (* ?a -1) -1) ?b)"), // formally proven at reduced bit width(but it's still correct at all bitwidths)
         //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (- (- ?a) 1) ?b)"),
-        //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (* ?a -1) -1) ?b)"),
+        rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (* ?a -1) -1) ?b)"),
         // arith -> bitwise
-        //   rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"), // formally proved
-        //    rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"), // formally proved
-        //    rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"), // formally proved
+        rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"), // formally proved
+        rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"), // formally proved
+        rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"), // formally proved
         // __check_bitwise_powers_of_two
-        //    rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => { // not formally proved but most likely bug free
-        //        BitwisePowerOfTwoFactorApplier {
-        //           xFactor : "?factor1".to_owned(),
-        //            yFactor : "?factor2".to_owned(),
-        //          }
-        //       } if (is_power_of_two("?factor1", "?factor2"))),
+        rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => { // not formally proved but most likely bug free
+        BitwisePowerOfTwoFactorApplier {
+            xFactor : "?factor1".to_owned(),
+            yFactor : "?factor2".to_owned(),
+                 }
+         } if (is_power_of_two("?factor1", "?factor2"))),
         // __check_beautify_constants_in_products: todo
         // __check_move_in_bitwise_negations
-        //     rewrite!("and-move-bitwise-negation-in"; "(~ (& (~ ?a) ?b))" => "(| ?a (~ ?b))"), // formally proved
-        //      rewrite!("or-move-bitwise-negation-in"; "(~ (| (~ ?a) ?b))" => "(& ?a (~ ?b))"), // formally proved
-        //     rewrite!("xor-move-bitwise-negation-in"; "(~ (^ (~ ?a) ?b))" => "(^ ?a ?b)"), // formally proved
+        rewrite!("and-move-bitwise-negation-in"; "(~ (& (~ ?a) ?b))" => "(| ?a (~ ?b))"), // formally proved
+        rewrite!("or-move-bitwise-negation-in"; "(~ (| (~ ?a) ?b))" => "(& ?a (~ ?b))"), // formally proved
+        rewrite!("xor-move-bitwise-negation-in"; "(~ (^ (~ ?a) ?b))" => "(^ ?a ?b)"), // formally proved
         // __check_bitwise_negations_in_excl_disjunctions
-        //      rewrite!("xor-flip-negations"; "(^ (~ ?a) (~ ?b))" => "(^ ?a ?b)"), // formally proved
+        rewrite!("xor-flip-negations"; "(^ (~ ?a) (~ ?b))" => "(^ ?a ?b)"), // formally proved
         // __check_rewrite_powers: todo
         // __check_resolve_product_of_powers
         // note: they say "Moreover merge factors that occur multiple times",
         // but I'm not sure what they mean
-        //  rewrite!("merge-power-same-base"; "(* (** ?a ?b) (** ?a ?c))" => "(** ?a (+ ?b ?c))"),
+        rewrite!("merge-power-same-base"; "(* (** ?a ?b) (** ?a ?c))" => "(** ?a (+ ?b ?c))"),
         // __check_resolve_product_of_constant_and_sum
         //rewrite!("distribute-constant-to-sum"; "(* (+ ?a ?b) Constant)" => "(+ (* ?a Constant) (* ?b Constant))"),
         // __check_factor_out_of_sum
-        //   rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"), // formally proved
+        rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"), // formally proved
         // __check_resolve_inverse_negations_in_sum
-        //   rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"), // formally proved
-        //  rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"), // formally proved
-        // __insert_fixed_in_conj: todo
-        // __insert_fixed_in_disj: todo
-        // __check_trivial_xor: implemented above
+        rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"), // formally proved
+        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"), // formally proved
+                                                                                               // __insert_fixed_in_conj: todo
+                                                                                               // __insert_fixed_in_disj: todo
+                                                                                               // __check_trivial_xor: implemented above
     ]
 }
 
