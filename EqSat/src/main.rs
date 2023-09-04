@@ -138,11 +138,9 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         println!("factors: {} {}", self.xFactor, self.yFactor);
 
         // Get the eclass, expression, and of the expressions relating to X.
-        let x_eclass = &egraph[subst["?x".parse().unwrap()]];
-        assert_eq!(x_eclass.nodes.len(), 1);
-        let x_id = x_eclass.id;
-        let x_expr = x_eclass.nodes.first().unwrap();
+        let x_id = subst["?x".parse().unwrap()];
 
+        /*
         let x_factor_eclass = &egraph[subst[self.xFactor.parse().unwrap()]];
         assert_eq!(x_factor_eclass.nodes.len(), 1);
         let x_factor_expr = x_factor_eclass.nodes.first().unwrap();
@@ -150,18 +148,45 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
             &Expr::Constant(def) => def,
             _ => panic!("factor must be constant!"),
         };
+        */
 
+        let x_factor_data = &egraph[subst[self.xFactor.parse().unwrap()]].data;
+        let x_factor_constant: i64 = match x_factor_data {
+            Some(c) => c.0,
+            None => panic!("factor must be constant!"),
+        };
+
+        /*
         // Get the eclass, expression, and of the expressions relating to Y.
         let y_eclass = &egraph[subst["?y".parse().unwrap()]];
         assert_eq!(y_eclass.nodes.len(), 1);
         let y_id = y_eclass.id;
-        let y_expr = x_eclass.nodes.first().unwrap();
         let y_factor_eclass = &egraph[subst[self.yFactor.parse().unwrap()]];
         assert_eq!(y_factor_eclass.nodes.len(), 1);
         let y_factor_expr = y_factor_eclass.nodes.first().unwrap();
         let y_factor_constant: i64 = match y_factor_expr {
             &Expr::Constant(def) => def,
             _ => panic!("factor must be constant!"),
+        };
+        */
+
+        // Get the eclass, expression, and of the expressions relating to X.
+        let y_id = subst["?y".parse().unwrap()];
+
+        /*
+        let x_factor_eclass = &egraph[subst[self.xFactor.parse().unwrap()]];
+        assert_eq!(x_factor_eclass.nodes.len(), 1);
+        let x_factor_expr = x_factor_eclass.nodes.first().unwrap();
+        let x_factor_constant: i64 = match x_factor_expr {
+            &Expr::Constant(def) => def,
+            _ => panic!("factor must be constant!"),
+        };
+        */
+
+        let y_factor_data = &egraph[subst[self.yFactor.parse().unwrap()]].data;
+        let y_factor_constant: i64 = match y_factor_data {
+            Some(c) => c.0,
+            None => panic!("factor must be constant!"),
         };
 
         let min = x_factor_constant.min(y_factor_constant);
@@ -217,11 +242,6 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         searcher_ast: Option<&PatternAst<Expr>>,
         rule_name: Symbol,
     ) -> Vec<Id> {
-        let nodes = &egraph[subst[self.constFactor.parse().unwrap()]].nodes;
-        let nodes2 = &egraph[subst[self.xFactor.parse().unwrap()]].nodes;
-
-        println!("node lengths: {} {}", nodes.len(), nodes2.len());
-
         let newConstExpr = &egraph[subst[self.constFactor.parse().unwrap()]].data;
 
         /*
@@ -243,7 +263,7 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
 
         let original = &egraph[eclass];
         for pair in &original.nodes {
-            println!("original: {}", pair);
+            // println!("original: {}", pair);
         }
 
         let x = subst[self.xFactor.parse().unwrap()];
@@ -382,7 +402,7 @@ fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
 
     move |egraph, _, subst| {
         if let Some(c) = &egraph[subst[var]].data {
-            println!("CONST! {}", c.0);
+            //println!("CONST! {}", c.0);
             return true;
         } else {
             return false;
