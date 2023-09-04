@@ -222,12 +222,10 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
 
         println!("node lengths: {} {}", nodes.len(), nodes2.len());
 
-        let constExpr = &egraph[subst[self.constFactor.parse().unwrap()]]
-            .nodes
-            .last()
-            .unwrap();
+        let newConstExpr = &egraph[subst[self.constFactor.parse().unwrap()]].data;
 
-        let xExpr = &egraph[subst[self.xFactor.parse().unwrap()]]
+        /*
+        let constExpr = &egraph[subst[self.constFactor.parse().unwrap()]]
             .nodes
             .last()
             .unwrap();
@@ -236,10 +234,11 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
             &&Expr::Constant(def) => def,
             _ => panic!("factor must be constant!"),
         };
+        */
 
-        match xExpr {
-            &&Expr::Constant(def) => panic!("cant be const"),
-            _ => println!("xExpr"),
+        let constFactor: i64 = match newConstExpr {
+            Some(c) => c.0,
+            None => panic!("factor must be constant!"),
         };
 
         let original = &egraph[eclass];
