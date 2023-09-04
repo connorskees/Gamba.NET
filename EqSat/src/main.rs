@@ -367,11 +367,11 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"), // formally proved
         // __check_bitwise_powers_of_two
         rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 ?y))" => { // not formally proved but most likely bug free
-        BitwisePowerOfTwoFactorApplier {
-            x_factor : "?factor1".to_owned(),
-            y_factor : "?factor2".to_owned(),
-                 }
-         } if (is_power_of_two("?factor1", "?factor2"))),
+            BitwisePowerOfTwoFactorApplier {
+                x_factor : "?factor1".to_owned(),
+                y_factor : "?factor2".to_owned(),
+            }
+        } if (is_power_of_two("?factor1", "?factor2"))),
         // __check_beautify_constants_in_products: todo
         // __check_move_in_bitwise_negations
         rewrite!("and-move-bitwise-negation-in"; "(~ (& (~ ?a) ?b))" => "(| ?a (~ ?b))"), // formally proved
@@ -390,10 +390,92 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"), // formally proved
         // __check_resolve_inverse_negations_in_sum
         rewrite!("invert-add-bitwise-not-self"; "(+ ?a (~ ?a))" => "-1"), // formally proved
-        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"), // formally proved
-                                                                                               // __insert_fixed_in_conj: todo
-                                                                                               // __insert_fixed_in_disj: todo
-                                                                                               // __check_trivial_xor: implemented above
+        // formally proved
+        rewrite!("invert-mul-bitwise-not-self"; "(+ (* ?a (~ ?b)) (* ?a ?b))" => "(* ?a -1)"),
+        // __insert_fixed_in_conj: todo
+        // __insert_fixed_in_disj: todo
+        // __check_trivial_xor: implemented above
+        // __check_xor_same_mult_by_minus_one: todo
+        // __check_conj_zero_rule
+        // x&-x&2*x
+        rewrite!("conj_zero_rule"; "(& ?a (& (* ?a -1) (* ?a 2)))" => "0"),
+        // __check_conj_neg_xor_zero_rule
+        // ~(2*x)&-(x^-x)
+        rewrite!("conj_neg_xor_zero_rule"; "(& (~ (* ?a 2)) (* (^ ?a (* ?a -1)) -1))" => "0"),
+        // __check_conj_neg_xor_minus_one_rule
+        // 2*x|~-(x^-x)
+        rewrite!("conj_neg_xor_minus_one_rule"; "(| (* ?a 2) (~ (* (^ ?a (* ?a -1)) -1)))" => "-1"),
+        // __check_conj_negated_xor_zero_rule
+        // 2*x&~(x^-x)
+        rewrite!("conj_negated_xor_zero_rule"; "(& (* ?a 2) (~ (^ ?a (* ?a -1))))" => "0"),
+        // __check_conj_xor_identity_rule
+        // 2*x&(x^-x)
+        rewrite!("conj_xor_identity_rule"; "(& (* ?a 2) (^ ?a (* ?a -1)))" => "(* ?a 2)"),
+        // __check_disj_xor_identity_rule
+        // 2*x|-(x^-x)
+        rewrite!("disj_xor_identity_rule"; "(| (* ?a 2) (* -1 (^ ?a (* ?a -1))))" => "(* ?a 2)"),
+        // __check_conj_neg_conj_identity_rule
+        // -x&~(x&2*x)
+        rewrite!("conj_neg_conj_identity_rule_1"; "(& (* ?a -1) (~ (& ?a (* ?a 2))))" => "(* ?a -1)"),
+        // -x&~(x&-2*x)
+        rewrite!("conj_neg_conj_identity_rule_2"; "(& (* ?a -1) (~ (& ?a (* ?a -2))))" => "(* ?a -1)"),
+        // -x&(~x|~(2*x))
+        rewrite!("conj_neg_conj_identity_rule_3"; "(& (* ?a -1) (| (~ ?a) (~ (* ?a 2))))" => "(* ?a -1)"),
+        // -x&(~x|~(-2*x))
+        rewrite!("conj_neg_conj_identity_rule_4"; "(& (* ?a -1) (| (~ ?a) (~ (* ?a -2))))" => "(* ?a -1)"),
+        // __check_disj_disj_identity_rule
+        // x|-(x|-x)
+        rewrite!("disj_disj_identity_rule"; "(| ?a (* (| ?a (* ?a -1)) -1))" => "?a"),
+        // __check_conj_conj_identity_rule
+        // x&-(x&-x)
+        rewrite!("conj_conj_identity_rule"; "(& ?a (* (& ?a (* ?a -1)) -1))" => "?a"),
+        // __check_disj_conj_identity_rule
+        // -x|(~x&2*x)
+        rewrite!("disj_conj_identity_rule_1"; "(| (* ?a -1) (& (~ ?a) (* ?a 2)))" => "(* ?a -1)"),
+        // -x|(~x&-2*x)
+        rewrite!("disj_conj_identity_rule_2"; "(| (* ?a -1) (& (~ ?a) (* ?a -2)))" => "(* ?a -1)"),
+        // -x|~(x|~(2*x))
+        rewrite!("disj_conj_identity_rule_3"; "(| (* ?a -1) (~ (| ?a (* ?a 2))))" => "(* ?a -1)"),
+        // -x|~(x|~(-2*x))
+        rewrite!("disj_conj_identity_rule_4"; "(| (* ?a -1) (~ (| ?a (* ?a -2))))" => "(* ?a -1)"),
+        // __check_disj_conj_identity_rule_2
+        // x|(-~x&2*~x)
+        rewrite!("disj_conj_identity_rule_2_1"; "(| ?a (* (& (~ ?a) (* (~ ?a) 2)) -1))" => "?a"),
+        // x|(-~x&-2*~x)
+        rewrite!("disj_conj_identity_rule_2_2"; "(| ?a (* (& (~ ?a) (* (~ ?a) -2)) -1))" => "?a"),
+        // __check_conj_disj_identity_rule
+        // x&(-~(2*x)|-~x)
+        rewrite!("conj_disj_identity_rule_1"; "(& ?a (| (* (~ (* ?a 2)) -1) (* (~ ?a) -1)))" => "?a"),
+        // x&(~(2*x)|-~x)
+        rewrite!("conj_disj_identity_rule_2"; "(& ?a (| (~ (* ?a 2)) (* (~ ?a) -1)))" => "?a"),
+        // x&(~(-2*~x)|-~x)
+        rewrite!("conj_disj_identity_rule_3"; "(& ?a (| (~ (* (~ ?a) -2)) (* (~ ?a) -1)))" => "?a"),
+        // __check_disj_neg_disj_identity_rule
+        // x|-(-x|2*x)
+        rewrite!("disj_neg_disj_identity_rule_1"; "(| ?a (* (| (* ?a -1) (* ?a 2)) -1))" => "?a"),
+        // x|-(-x|-2*x)
+        rewrite!("disj_neg_disj_identity_rule_2"; "(| ?a (* (| (* ?a -1) (* ?a -2)) -1))" => "?a"),
+        // __check_disj_sub_disj_identity_rule
+        // todo: this one could be wrong bc of precedence
+        // x|(x|y)-y
+        rewrite!("disj_sub_disj_identity_rule"; "(| ?a (+ (| ?a ?b) (* ?b -1)))" => "?a"),
+        // __check_disj_sub_disj_identity_rule
+        // todo: see above
+        // x|x-(x&y)
+        rewrite!("disj_sub_disj_identity_rule"; "(| ?a (+ ?a (* (& ?a ?b) -1)))" => "?a"),
+        // __check_conj_add_conj_identity_rule
+        // todo: see above
+        // x&x+(~x&y)
+        rewrite!("conj_add_conj_identity_rule"; "(& ?a (+ ?a (& (~ ?a) ?b)))" => "?a"),
+        // __check_disj_disj_conj_rule
+        // x|-(-y|(x&y))
+        rewrite!("disj_disj_conj_rule"; "(| ?a (* (| (* ?b -1) (& ?a ?b)) -1))" => "(| ?a ?b)"),
+        // __check_conj_conj_disj_rule
+        // x&-(-y&(x|y))
+        rewrite!("conj_conj_disj_rule"; "(& ?a (* (& (* ?b -1) (| ?a ?b)) -1))" => "(& ?a ?b)"),
+        // __check_disj_disj_conj_rule_2
+        // -(-x|x&y&z)|x&y
+        rewrite!("disj_disj_conj_rule_2"; "(| (* (| (* ?a -1) (& ?a (& ?b ?c))) -1) (& ?a ?b))" => "?a"),
     ]
 }
 
