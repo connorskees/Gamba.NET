@@ -508,7 +508,7 @@ fn main() {
 
     let mut simplified = simplify(expr.as_str());
 
-    for i in 0..0 {
+    for i in 0..10 {
         simplified = simplify(simplified.clone().as_ref());
     }
 
