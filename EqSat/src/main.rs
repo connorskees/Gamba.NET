@@ -64,12 +64,12 @@ impl Analysis<Expr> for ConstantFold {
         Some(match enode {
             Expr::Constant(c) => {
                 let msg = format!("{}", c).parse().unwrap();
-                println!("constant const prop: {}", msg);
+                //println!("constant const prop: {}", msg);
                 (*c, msg)
             }
             Expr::Add([a, b]) => {
                 let msg = format!("(+ {} {})", x(a)?, x(b)?).parse().unwrap();
-                println!("add const prop: {}", msg);
+                //println!("add const prop: {}", msg);
                 (x(a)? + x(b)?, msg)
             }
             Expr::Mul([a, b]) => (
@@ -93,9 +93,9 @@ impl Analysis<Expr> for ConstantFold {
                 format!("(^ {} {})", x(a)?, x(b)?).parse().unwrap(),
             ),
             Expr::Neg([a]) => {
-                println!("NEGATION: ~ {}", x(a)?);
+                //println!("NEGATION: ~ {}", x(a)?);
                 let msg = format!("(~ {})", x(a)?).parse().unwrap();
-                println!("{}", msg);
+                //println!("{}", msg);
                 let result = (!x(a)?, msg);
                 result
             }
@@ -135,7 +135,7 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         searcher_ast: Option<&PatternAst<Expr>>,
         rule_name: Symbol,
     ) -> Vec<Id> {
-        println!("factors: {} {}", self.xFactor, self.yFactor);
+        // println!("factors: {} {}", self.xFactor, self.yFactor);
 
         // Get the eclass, expression, and of the expressions relating to X.
         let x_id = subst["?x".parse().unwrap()];
@@ -432,31 +432,19 @@ fn is_power_of_two(var: &str, var2Str: &str) -> impl Fn(&mut EEGraph, Id, &Subst
         let child = &egraph[subst[var]].nodes.first().unwrap();
         let child2 = &egraph[subst[var2]].nodes.first().unwrap();
 
-        match child {
-            Expr::Add(_) => println!("add"),
-            Expr::Mul(_) => println!("Mul"),
-            Expr::Pow(_) => println!("Pow"),
-            Expr::And(_) => println!("And"),
-            Expr::Or(_) => println!("Or"),
-            Expr::Xor(_) => println!("Xor"),
-            Expr::Neg(_) => println!("Not"),
-            Expr::Symbol(_) => println!("Symbol"),
-            Expr::Constant(_) => println!("Constant"),
-        }
-
         if let &&Expr::Constant(def) = child {
-            println!("this is a constant!");
+            //  println!("this is a constant!");
         } else {
-            println!("this is not a constant! {}", child)
+            //  println!("this is not a constant! {}", child)
         }
 
-        println!("factor1: {}\nfactor2: {}", child, child2);
+        //println!("factor1: {}\nfactor2: {}", child, child2);
 
         //if let Some(c) = &egraph[subst[var2]] {
         //      println!("Somasde: {}", c.0);
         //  }
 
-        println!("is power of two! {} {}", var, var2);
+        //println!("is power of two! {} {}", var, var2);
         return v1 && v2;
     }
 }
@@ -468,10 +456,10 @@ fn simplify(s: &str) -> String {
 
     // Create the runner. You can enable explain_equivalence to explain the equivalence,
     // but it comes at a severe performance penalty.
-    let explain_equivalence = true;
+    let explain_equivalence = false;
     let mut runner: Runner<Expr, ConstantFold> = if !explain_equivalence {
         Runner::default()
-            .with_time_limit(Duration::from_millis(100))
+            .with_time_limit(Duration::from_millis(1000))
             .with_expr(&expr)
     } else {
         Runner::default()
@@ -513,11 +501,16 @@ fn main() {
     let expr = if next.is_some() {
         next.unwrap()
     } else {
-        "(^ (^ (~ x) (~ y)) z)".to_owned()
+        "(+ (+ (+ (+ (+ (+ (* (* (* 36 -1) y) (& x y)) (* (* (* 19 y) (& x (~ y))) -1)) (* (* 20 y) (~ (& x (~ x))))) (* (* 6 y) (~ (& x (~ y))))) (* (* (* 36 y) (~ (| x y))) -1)) (* (* (* 25 y) (~ (| x (~ y)))) -1)) (* (* 11 y) (~ (^ x y))))".to_owned()
     };
 
     println!("Attempting to simplify expression: {}", expr);
 
-    let simplified = simplify(expr.as_str());
+    let mut simplified = simplify(expr.as_str());
+
+    for i in 0..0 {
+        simplified = simplify(simplified.clone().as_ref());
+    }
+
     println!("{}", simplified);
 }
