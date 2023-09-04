@@ -122,6 +122,10 @@ impl Analysis<Expr> for ConstantFold {
     }
 }
 
+// Given an AND, XOR, or OR, of `2*x&2*y`, where a power of two can be factored out of it's children,
+// transform it into `2*(x&y)`.
+// TODO: As of right now this transform only works if the constant multiplier is a power of 2,
+// but it should work if any power of two can be factored out of the immediate multipliers.
 impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
     fn apply_one(
         &self,
@@ -133,60 +137,74 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
     ) -> Vec<Id> {
         println!("factors: {} {}", self.xFactor, self.yFactor);
 
-        let xExpr = &egraph[subst[self.xFactor.parse().unwrap()]]
-            .nodes
-            .first()
-            .unwrap();
+        // Get the eclass, expression, and of the expressions relating to X.
+        let x_eclass = &egraph[subst["?x".parse().unwrap()]];
+        assert_eq!(x_eclass.nodes.len(), 1);
+        let x_id = x_eclass.id;
+        let x_expr = x_eclass.nodes.first().unwrap();
 
-        let yExpr = &egraph[subst[self.yFactor.parse().unwrap()]]
-            .nodes
-            .first()
-            .unwrap();
-
-        let xFactor: i64 = match xExpr {
-            &&Expr::Constant(def) => def,
+        let x_factor_eclass = &egraph[subst[self.xFactor.parse().unwrap()]];
+        assert_eq!(x_factor_eclass.nodes.len(), 1);
+        let x_factor_expr = x_factor_eclass.nodes.first().unwrap();
+        let x_factor_constant: i64 = match x_factor_expr {
+            &Expr::Constant(def) => def,
             _ => panic!("factor must be constant!"),
         };
 
-        let yFactor: i64 = match yExpr {
-            &&Expr::Constant(def) => def,
+        // Get the eclass, expression, and of the expressions relating to Y.
+        let y_eclass = &egraph[subst["?y".parse().unwrap()]];
+        assert_eq!(y_eclass.nodes.len(), 1);
+        let y_id = y_eclass.id;
+        let y_expr = x_eclass.nodes.first().unwrap();
+        let y_factor_eclass = &egraph[subst[self.yFactor.parse().unwrap()]];
+        assert_eq!(y_factor_eclass.nodes.len(), 1);
+        let y_factor_expr = y_factor_eclass.nodes.first().unwrap();
+        let y_factor_constant: i64 = match y_factor_expr {
+            &Expr::Constant(def) => def,
             _ => panic!("factor must be constant!"),
         };
 
-        let min = xFactor.min(yFactor);
-        let max = xFactor.max(yFactor);
+        let min = x_factor_constant.min(y_factor_constant);
+        let min_id = egraph.add(Expr::Constant(min));
+        let max = x_factor_constant.max(y_factor_constant);
 
         // Here we're dealing with expressions like "4*x&4*y" and ""4*x&8*y",
         // where xFactor and yFactor are the constant multipliers.
         // If the constant multipliers are the same, then for example
         // we can factor `4*x&4*y` into `4*(x&y)`.
-        let factored = if min == max {
-            format!("(* {} (& ?x ?y))", min)
+        let factored: Id = if min == max {
+            // Create an egraph node for (x & y).
+            let anded = egraph.add(Expr::And([x_id, y_id]));
+
+            // Create an egraph node for factored_out_constant * (x & y);
+            egraph.add(Expr::Mul([min_id, anded]))
         }
         // If the factors are not equal(e.g. "4*x&8*y"), then we need to factor
         // out only the minimum factor, giving us something like "4*(x&2*y)".
         else {
-            // If x has the larger factor then the expression becomes min * ((max/min) * x) & y)
-            if xFactor == max {
-                format!("(* {} (& (* {} ?x) ?y))", min, max / min)
-            }
-            // // If y has the larger factor then the expression becomes min * ((max/min) * y) & x)
-            else {
-                //println!("foobar: * {} (& (* {} ?y) ?x)", min, max / min);
-                format!("(* {} (& (* {} ?y) ?x))", min, max / min)
-            }
+            let remaining_factor = egraph.add(Expr::Constant((max / min)));
+
+            // If x has the large factor then the RHS becomes ((max/min) * x) & y;
+            let rhs: Id = if x_factor_constant == max {
+                let x_times_remaining_factor = egraph.add(Expr::Mul(([remaining_factor, x_id])));
+                let anded = egraph.add(Expr::And(([x_times_remaining_factor, y_id])));
+                anded
+            // If y has the large factor then the RHS becomes ((max/min) * y) & x;
+            } else {
+                let y_times_remaining_factor = egraph.add(Expr::Mul(([remaining_factor, y_id])));
+                let anded = egraph.add(Expr::And(([y_times_remaining_factor, x_id])));
+                anded
+            };
+
+            // Create the final expression of (min * factored_rhs);
+            egraph.add(Expr::Mul([min_id, rhs]))
         };
 
-        panic!("foobar");
-        let parsed: RecExpr<Expr> = factored.parse().unwrap();
-        let res = egraph.add_expr(&parsed);
-
-        let mut results: Vec<Id> = vec![];
-        egraph.union(eclass, res);
-        results.push(res);
-        results.push(eclass);
-        return results;
-        panic!()
+        if (egraph.union(eclass, factored)) {
+            return vec![factored];
+        } else {
+            return vec![];
+        }
     }
 }
 
@@ -230,9 +248,6 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         }
 
         let x = subst[self.xFactor.parse().unwrap()];
-        let _const = egraph.add(Expr::Constant((constFactor)));
-        let oMul = egraph.add(Expr::Mul([_const, x]));
-        let oAdd = Expr::Add([oMul, x]);
 
         let newConst = egraph.add(Expr::Constant(constFactor + 1));
         let newExpr = egraph.add(Expr::Mul([newConst, x]));
@@ -323,20 +338,16 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),       // formally proved
         // __check_bitwise_negations
         // bitwise -> arith
-        rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (- (- ?a) 1) ?b)"),
         rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"), // formally proven
-        //rewrite!("sub-bitwise-negation"; "(- (~ ?a) ?b)" => "(- (- (- ?a) 1) ?b)"),
         rewrite!("sub-bitwise-negation"; "(+ (~ ?a) (* ?b -1))" => "(+ (+ (* ?a -1) -1) (* ?b -1))"), // formally proven
-        //rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (- (- ?a) 1) ?b)"),
         rewrite!("mul-bitwise-negation"; "(* (~ ?a) ?b)" => "(* (+ (* ?a -1) -1) ?b)"), // formally proven at reduced bit width(but it's still correct at all bitwidths)
-        //rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (- (- ?a) 1) ?b)"),
         rewrite!("pow-bitwise-negation"; "(** (~ ?a) ?b)" => "(** (+ (* ?a -1) -1) ?b)"),
         // arith -> bitwise
         rewrite!("and-bitwise-negation"; "(& (+ (* ?a -1) -1) ?b)" => "(& (~ ?a) ?b)"), // formally proved
         rewrite!("or-bitwise-negation"; "(| (+ (* ?a -1) -1) ?b)" => "(| (~ ?a) ?b)"), // formally proved
         rewrite!("xor-bitwise-negation"; "(^ (+ (* ?a -1) -1) ?b)" => "(^ (~ ?a) ?b)"), // formally proved
         // __check_bitwise_powers_of_two
-        rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 y))" => { // not formally proved but most likely bug free
+        rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 ?y))" => { // not formally proved but most likely bug free
         BitwisePowerOfTwoFactorApplier {
             xFactor : "?factor1".to_owned(),
             yFactor : "?factor2".to_owned(),
@@ -372,6 +383,7 @@ fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
 
     move |egraph, _, subst| {
         if let Some(c) = &egraph[subst[var]].data {
+            println!("CONST! {}", c.0);
             return true;
         } else {
             return false;
