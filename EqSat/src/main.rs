@@ -1287,24 +1287,6 @@ fn main() {
         }
     }
 
-    for i in 0..10 {
-        if i % 2 == 0 {
-            simplified = simplify(simplified.clone().as_ref(), true);
-        } else {
-            simplified = simplify(simplified.clone().as_ref(), true);
-        }
-    }
-
-    for i in 0..10 {
-        if i % 2 == 0 {
-            simplified = simplify(simplified.clone().as_ref(), false);
-            simplified = simplify(simplified.clone().as_ref(), false);
-        } else {
-            simplified = simplify(simplified.clone().as_ref(), true);
-            simplified = simplify(simplified.clone().as_ref(), true);
-        }
-    }
-
     simplified = simplify(simplified.clone().as_ref(), false);
     simplified = simplify(simplified.clone().as_ref(), false);
     println!("{}", simplified);
