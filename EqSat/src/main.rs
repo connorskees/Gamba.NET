@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use egg::*;
 
-type Cost = f64;
+type Cost = i64;
 
 type ApplierEGraph = egg::EGraph<Expr, BitwiseAnalysis>;
 type ApplierREwrite = egg::Rewrite<Expr, BitwiseAnalysis>;
@@ -83,10 +83,10 @@ fn try_fold_constant(egraph: &EEGraph, enode: &Expr) -> Option<(i64, PatternAst<
         Expr::Add([a, b]) => {
             let msg = format!("(+ {} {})", x(a)??, x(b)??).parse().unwrap();
             //println!("add const prop: {}", msg);
-            (x(a)?? + x(b)??, msg)
+            (x(a)??.wrapping_add(x(b)??), msg)
         }
         Expr::Mul([a, b]) => (
-            x(a)?? * x(b)??,
+            x(a)??.wrapping_mul(x(b)??),
             format!("(* {} {})", x(a)??, x(b)??).parse().unwrap(),
         ),
         Expr::Pow([a, b]) => (
@@ -177,11 +177,12 @@ fn classify(
     // If we have any operation that may be folded into a constant(e.g. x + 0, x ** 0), then do it.
     let const_folded: Option<(i64, RecExpr<ENodeOrVar<Expr>>)> = try_fold_constant(egraph, enode);
     if const_folded.is_some() {
+        let unwrapped = const_folded.unwrap();
         return Some((
             AstClassification::Constant {
-                value: (const_folded.unwrap().0),
+                value: (unwrapped.0),
             },
-            Some(const_folded.unwrap().1),
+            Some(unwrapped.1),
         ));
     }
 
@@ -243,7 +244,7 @@ fn classify(
             // Note that constant folding has already eliminated addition of constants.
             if children.into_iter().any(|x| match x {
                 AstClassification::Linear { is_variable } => true,
-                AstClassification::Bitwise => true,
+                AstClassification::Bitwise => false,
                 _ => false,
             }) {
                 return Some((
@@ -257,25 +258,64 @@ fn classify(
             // This should never happen?
             panic!()
         }
-        Expr::Neg([a]) => classify_bitwise(op(a)?, None),
-        Expr::And([a, b]) => classify_bitwise(op(a)?, Some(op(b)?)),
-        Expr::Or([a, b]) => classify_bitwise(op(a)?, Some(op(b)?)),
-        Expr::Xor([a, b]) => classify_bitwise(op(a)?, Some(op(b)?)),
+        Expr::Neg([a]) => {
+            let result = classify_bitwise(egraph, op(a)?, None);
+            result
+        }
+        Expr::And([a, b]) => classify_bitwise(egraph, op(a)?, Some(op(b)?)),
+        Expr::Or([a, b]) => {
+            /*
+            println!("here comes an OR!");
+            print(egraph, enode);
+
+            let a = op(a)?;
+            println!("Classification of a: {:#?}", a);
+
+            let b = op(b)?;
+            println!("Classification of b: {:#?}", b);
+
+            let result = classify_bitwise(egraph, a, Some(b));
+            println!("Classification of or^: {:#?}", result);
+            result
+            */
+            classify_bitwise(egraph, op(a)?, Some(op(b)?))
+        }
+        Expr::Xor([a, b]) => classify_bitwise(egraph, op(a)?, Some(op(b)?)),
     };
 
     return Some((result, None));
 }
 
-fn classify_bitwise(a: AstClassification, b: Option<AstClassification>) -> AstClassification {
+fn classify_bitwise(
+    egraph: &EEGraph,
+    a: AstClassification,
+    b: Option<AstClassification>,
+) -> AstClassification {
     // TODO: Throw if we see negation with a constant, that should be fixed.
+
+    let mut maybe_b: AstClassification = a;
+
+    /*
     let mut children = if b.is_some() {
-        [a, b.unwrap()].iter()
+        maybe_b = b.unwrap().clone();
+        [a, maybe_b]
     } else {
-        [a].iter()
+        [a]
+    };
+    */
+
+    let mut childrens = if b.is_some() {
+        maybe_b = b.unwrap().clone();
+        vec![a, maybe_b]
+    } else {
+        vec![a]
     };
 
+    let mut children = childrens;
+    //println!("child count: {}", children.len());
+
     // Check if the expression contains constants or arithmetic expressions.
-    let containsConstantOrArithmetic = children.any(|x| match x {
+    let containsConstantOrArithmetic = children.iter().any(|x| match x {
         AstClassification::Constant { value } => true,
         // We only want to match linear arithmetic expressions - variables are excluded here.
         AstClassification::Linear { is_variable } => {
@@ -289,7 +329,7 @@ fn classify_bitwise(a: AstClassification, b: Option<AstClassification>) -> AstCl
     });
 
     // Check if the expression contains constants or arithmetic expressions.
-    let containsMixedOrNonLinear = children.any(|x| match x {
+    let containsMixedOrNonLinear = children.iter().any(|x| match x {
         AstClassification::Mixed => true,
         AstClassification::Nonlinear => true,
         _ => false,
@@ -299,7 +339,7 @@ fn classify_bitwise(a: AstClassification, b: Option<AstClassification>) -> AstCl
     // arithmetic(linear) expressions, or non linear subexpressions.
     if containsConstantOrArithmetic || containsMixedOrNonLinear {
         return AstClassification::Nonlinear;
-    } else if children.any(|x: &AstClassification| match x {
+    } else if children.iter().any(|x: &AstClassification| match x {
         AstClassification::Linear { is_variable } => {
             if *is_variable {
                 false
@@ -314,6 +354,18 @@ fn classify_bitwise(a: AstClassification, b: Option<AstClassification>) -> AstCl
     };
 
     // If none of the children are nonlinear or arithmetic then this is a pure bitwise expression.
+    /*
+    println!(
+        "{} {}",
+        containsConstantOrArithmetic, containsMixedOrNonLinear
+    );
+    */
+
+    for child in children {
+        //println!("children: {:#?}", child);
+    }
+
+    //panic!("oh no!");
     return AstClassification::Bitwise;
 }
 
@@ -355,23 +407,24 @@ fn get_expr_pattern_ast(enode: &Expr) -> PatternAst<Expr> {
 
 fn get_classification_cost(kind: AstClassification) -> Cost {
     match kind {
-        AstClassification::Constant { value } => 0.1,
+        AstClassification::Constant { value } => 10,
         AstClassification::Linear { is_variable } => {
             if is_variable {
-                0.1
+                10
             } else {
-                1.0
+                100
             }
         }
-        AstClassification::Bitwise => 1.0,
-        AstClassification::Mixed => 1.5,
-        AstClassification::Nonlinear => 3.0,
+        AstClassification::Bitwise => 125,
+        AstClassification::Mixed => 150,
+        AstClassification::Nonlinear => 300,
         AstClassification::Unknown => panic!("Hopefully this never happens?"),
     }
 }
 
 fn get_cost(egraph: &EEGraph, enode: &Expr) -> Cost {
-    let op = |i: &Id| get_classification_cost(egraph[*i].data.unwrap().0);
+    // TODO: Remove clone
+    let op = |i: &Id| egraph[*i].data.clone().unwrap().2;
     match enode {
         Expr::Add([a, b]) => op(a) + op(b),
         Expr::Mul([a, b]) => op(a) + op(b),
@@ -380,8 +433,64 @@ fn get_cost(egraph: &EEGraph, enode: &Expr) -> Cost {
         Expr::Or([a, b]) => op(a) + op(b),
         Expr::Xor([a, b]) => op(a) + op(b),
         Expr::Neg([a]) => op(a),
-        Expr::Constant(_) => 0.1,
-        Expr::Symbol(_) => 0.1,
+        Expr::Constant(_) => 1,
+        Expr::Symbol(_) => 1,
+    }
+}
+
+fn print(egraph: &EEGraph, expr: &Expr) {
+    let cost_func = EGraphCostFn { egraph: egraph };
+
+    let extractor = Extractor::new(&egraph, cost_func);
+
+    match expr {
+        Expr::Add([a, b]) => {
+            println!(
+                "extracted:(+ {}  {})",
+                extractor.find_best(*a).1,
+                extractor.find_best(*b).1
+            );
+        }
+        Expr::Mul([a, b]) => {
+            println!(
+                "extracted:(* {}  {})",
+                extractor.find_best(*a).1,
+                extractor.find_best(*b).1
+            );
+        }
+        Expr::Pow([a, b]) => {
+            println!(
+                "extracted:(** {}  {})",
+                extractor.find_best(*a).1,
+                extractor.find_best(*b).1
+            );
+        }
+        Expr::And([a, b]) => {
+            println!(
+                "extracted:(& {}  {})",
+                extractor.find_best(*a).1,
+                extractor.find_best(*b).1
+            );
+        }
+        Expr::Or([a, b]) => {
+            println!(
+                "extracted:(| {}  {})",
+                extractor.find_best(*a).1,
+                extractor.find_best(*b).1
+            );
+        }
+        Expr::Xor([a, b]) => {
+            println!(
+                "extracted:(^ {}  {})",
+                extractor.find_best(*a).1,
+                extractor.find_best(*b).1
+            );
+        }
+        Expr::Neg([a]) => {
+            println!("extracted:(~ {})", extractor.find_best(*a).1);
+        }
+        Expr::Constant(_) => todo!(),
+        Expr::Symbol(_) => todo!(),
     }
 }
 
@@ -397,11 +506,93 @@ impl Analysis<Expr> for ConstantFold {
             panic!("Classifications cannot be none!");
         }
 
+        let mut cost = get_cost(egraph, enode);
+
         // If we classified the AST and returned a new PatternAst<Expr>, that means constant
         // folding succeed. So now we return the newly detected classification and the pattern ast.
         let classification = maybe_classification.unwrap();
         if (classification.1.is_some()) {
-            return Some((classification.0, classification.1, get_cost(egraph, enode)));
+            return Some((classification.0, classification.1, cost));
+        }
+
+        let str = enode.to_string();
+        if (cost > 30000) {
+            match classification.0 {
+                AstClassification::Unknown => panic!(),
+                AstClassification::Constant { value } => (),
+                AstClassification::Bitwise => {
+                    print!("bitwse subexpression: ");
+                    match enode {
+                        Expr::Add([a, b]) => print(egraph, enode),
+                        Expr::Mul(_) => print(egraph, enode),
+                        Expr::Pow(_) => print(egraph, enode),
+                        Expr::And(_) => print(egraph, enode),
+                        Expr::Or(_) => print(egraph, enode),
+                        Expr::Xor(_) => print(egraph, enode),
+                        Expr::Neg(_) => print(egraph, enode),
+                        Expr::Constant(_) => (),
+                        Expr::Symbol(_) => (),
+                    }
+                }
+                AstClassification::Linear { is_variable } => {
+                    print!("linear subexpression: ");
+                    match enode {
+                        Expr::Add([a, b]) => print(egraph, enode),
+                        Expr::Mul(_) => print(egraph, enode),
+                        Expr::Pow(_) => print(egraph, enode),
+                        Expr::And(_) => print(egraph, enode),
+                        Expr::Or(_) => print(egraph, enode),
+                        Expr::Xor(_) => print(egraph, enode),
+                        Expr::Neg(_) => print(egraph, enode),
+                        Expr::Constant(_) => (),
+                        Expr::Symbol(_) => (),
+                    }
+                }
+                AstClassification::Nonlinear => {
+                    //print!("nonlinear subexpression: ");
+                    /*
+                    match enode {
+                        Expr::Add([a, b]) => print(egraph, enode),
+                        Expr::Mul(_) => print(egraph, enode),
+                        Expr::Pow(_) => print(egraph, enode),
+                        Expr::And(_) => print(egraph, enode),
+                        Expr::Or(_) => print(egraph, enode),
+                        Expr::Xor(_) => print(egraph, enode),
+                        Expr::Neg(_) => print(egraph, enode),
+                        Expr::Constant(_) => (),
+                        Expr::Symbol(_) => (),
+                    }
+                    */
+                }
+                AstClassification::Mixed => {
+                    print!("mixed subexpression: ");
+                    match enode {
+                        Expr::Add([a, b]) => print(egraph, enode),
+                        Expr::Mul(_) => print(egraph, enode),
+                        Expr::Pow(_) => print(egraph, enode),
+                        Expr::And(_) => print(egraph, enode),
+                        Expr::Or(_) => print(egraph, enode),
+                        Expr::Xor(_) => print(egraph, enode),
+                        Expr::Neg(_) => print(egraph, enode),
+                        Expr::Constant(_) => (),
+                        Expr::Symbol(_) => (),
+                    }
+
+                    //let best = extractor.find_best(node)
+                    match enode {
+                        Expr::Add([a, b]) => print(egraph, enode),
+                        Expr::Mul(_) => print(egraph, enode),
+                        Expr::Pow(_) => print(egraph, enode),
+                        Expr::And(_) => print(egraph, enode),
+                        Expr::Or(_) => print(egraph, enode),
+                        Expr::Xor(_) => print(egraph, enode),
+                        Expr::Neg(_) => print(egraph, enode),
+                        Expr::Constant(_) => (),
+                        Expr::Symbol(_) => (),
+                    }
+                    //panic!();
+                }
+            }
         }
 
         // Otherwise we've classified the AST but there was no constant folding to be performed.
@@ -409,15 +600,28 @@ impl Analysis<Expr> for ConstantFold {
     }
 
     fn merge(&mut self, maybeA: &mut Self::Data, maybeB: Self::Data) -> DidMerge {
+        /*
+        let mut a = maybeA.to_owned().unwrap();
+        let mut b = maybeB.to_owned().unwrap();
+
+        let classification_a_cost = get_classification_cost(a.0);
+        let classification_b_cost = get_classification_cost(b.0);
+
+        let mut changedA = false;
+        let mut changedB = false;
+        if (classification_a_cost > classification_b_cost) {
+            a.0 = b.0;
+            changedA = true;
+        } else if (classification_b_cost > classification_a_cost) {
+            b.0 = a.0;
+            changedB = true;
+        }
+        */
+
         return merge_option(maybeA, maybeB, |maybeA, maybeB| DidMerge(false, false));
 
         // TODO: Not sure how merging is supposed to work?
         let mut did_merge = DidMerge(false, false);
-        let mut a = maybeA.unwrap();
-        let mut b = maybeB.unwrap();
-
-        let classification_a_cost = get_classification_cost(a.0);
-        let classification_b_cost = get_classification_cost(b.0);
 
         return did_merge;
         /*
@@ -430,16 +634,36 @@ impl Analysis<Expr> for ConstantFold {
     }
 
     fn modify(egraph: &mut EEGraph, id: Id) {
-        panic!("todo!");
-
+        // TODO: Call egraph.union_instanations when with_explanations_enabled is set?
         if let Some(c) = egraph[id].data.clone() {
-            egraph.union_instantiations(
-                &c.1,
-                &c.0.to_string().parse().unwrap(),
-                &Default::default(),
-                "analysis".to_string(),
-            );
+            if let Some(new) = &c.1 {
+                /*
+                egraph.un(
+                    &c.1,
+                    &c.0.to_string().parse().unwrap(),
+                    &Default::default(),
+                    "analysis".to_string(),
+                );
+                */
+
+                let instantiation = egraph.add_instantiation(new, &Default::default());
+                egraph.union(id, instantiation);
+            }
         }
+    }
+}
+
+fn read_constant(
+    data: &Option<(AstClassification, Option<PatternAst<Expr>>, Cost)>,
+) -> Option<i64> {
+    if (data.is_none()) {
+        return None;
+    }
+
+    let classification = data.as_ref().unwrap().0;
+    match classification {
+        AstClassification::Constant { value } => return Some(value),
+        _ => return None,
     }
 }
 
@@ -472,8 +696,8 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         */
 
         let x_factor_data = &egraph[subst[self.x_factor.parse().unwrap()]].data;
-        let x_factor_constant: i64 = match x_factor_data {
-            Some(c) => c.0,
+        let x_factor_constant: i64 = match read_constant(x_factor_data) {
+            Some(c) => c,
             None => panic!("factor must be constant!"),
         };
 
@@ -505,10 +729,7 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         */
 
         let y_factor_data = &egraph[subst[self.y_factor.parse().unwrap()]].data;
-        let y_factor_constant: i64 = match y_factor_data {
-            Some(c) => c.0 .0,
-            None => panic!("factor must be constant!"),
-        };
+        let y_factor_constant: i64 = read_constant(y_factor_data).unwrap();
 
         let min = x_factor_constant.min(y_factor_constant);
         let min_id = egraph.add(Expr::Constant(min));
@@ -577,11 +798,7 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         };
         */
 
-        let const_factor: i64 = match new_const_expr {
-            Some(c) => c.0 .0,
-            None => panic!("factor must be constant!"),
-        };
-
+        let const_factor: i64 = read_constant(new_const_expr).unwrap();
         let original = &egraph[eclass];
         for pair in &original.nodes {
             // println!("original: {}", pair);
@@ -797,6 +1014,41 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_disj_disj_conj_rule_2
         // -(-x|x&y&z)|x&y
         rewrite!("disj_disj_conj_rule_2"; "(| (* (| (* ?x -1) (& (& ?x ?y) ?z)) -1) (& ?x ?y))" => "?x"),
+        // Additional rules:
+        rewrite!("mba-1"; "(+ ?d (* (* 1 -1) (& ?d ?a)))" => "(& (~ ?a) ?d)"),
+        rewrite!("mba-2"; "(+ (* (* 1 -1) (& ?d ?a)) ?d)" => "(& (~ ?a) ?d)"),
+        rewrite!("mba-3"; "(+ (+ ?a (* 2 -1)) (* (* 2 -1) ?d))" => "(+ (+ (* 2 -1) ?a) (* (* 2 ?d) -1))"),
+        rewrite!("mba-4"; "(+ (| ?d ?a) (* (* 1 -1) (& ?a (~ ?d))))" => "?d"),
+        rewrite!("mba-5"; "(+ (* (* 1 -1) (& ?a (~ ?d))) (| ?d ?a))" => "?d"),
+        rewrite!("mba-6"; "(+ (& ?d ?a) (& ?a (~ ?d)))" => "?a"),
+        rewrite!("mba-7"; "(+ (& ?a (~ ?d)) (& ?d ?a))" => "?a"),
+        rewrite!("mba-8"; "(+ (* (& ?d (* ?a ?d)) (| ?d (* ?a ?d))) (* (& (~ ?d) (* ?a ?d)) (& ?d (~ (* ?a ?d)))))" => "(* (** ?d 2) ?a)"),
+        rewrite!("mba-9"; "(+ (+ ?a (* -2 ?d)) (* 2 (& (~ ?a) (* 2 ?d))))" => "(^ ?a (* 2 ?d))"),
+        rewrite!("mba-10"; "(~ (* ?x ?y))" => "(+ (* (~ ?x) ?y) (+ ?y (* 1 -1)))"),
+        rewrite!("mba-11"; "(~ (+ ?x ?y))" => "(+ (~ ?x) (+ (~ ?y) 1))"),
+        rewrite!("mba-12"; "(~ (+ ?x (* ?y -1)))" => "(+ (~ ?x) (* (+ (~ ?y) 1) -1))"),
+        rewrite!("mba-13"; "(~ (& ?x ?y))" => "(| (~ ?x) (~ ?y))"),
+        rewrite!("mba-14"; "(~ (^ ?x ?y))" => "(| (& ?x ?y) (~ (| ?x ?y)))"),
+        rewrite!("mba-15"; "(~ (| ?x ?y))" => "(& (~ ?x) (~ ?y))"),
+        rewrite!("mba-16"; "(* (* ?x ?y) -1)" => "(* (* ?x -1) ?y)"),
+        rewrite!("mba-17"; "(* (* ?x -1) ?y)" => "(* (* ?x ?y) -1)"),
+        rewrite!("mba-18"; "(* (+ ?x ?y) -1)" => "(+ (* ?x -1) (* ?y -1))"),
+        rewrite!("mba-19"; "(~ (& (~ ?a48) (~ ?a46)))" => "(| ?a46 ?a48)"),
+        rewrite!("mba-20"; "(~ (& (~ ?a48) (~ ?a46)))" => "(| ?a46 ?a48)"),
+        rewrite!("mba-21"; "(~ (& (~ ?a21) (~ ?a46)))" => "(| ?a21 ?a46)"),
+        rewrite!("mba-22"; "(& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46)))" => "(^ ?a46 ?a48)"),
+        rewrite!("mba-23"; "(& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46)))" => "(^ ?a46 ?a48)"),
+        rewrite!("mba-24"; "(& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46))))" => "(^ ?a21 ?a46)"),
+        rewrite!("mba-25"; "(~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))))" => "(~ (^ ?a46 ?a48))"),
+        rewrite!("mba-26"; "(~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46)))))" => "(~ (^ ?a21 ?a46))"),
+        rewrite!("mba-27"; "(& (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))) (~ ?a21))" => "(& (~ ?a21) (^ ?a46 ?a48))"),
+        rewrite!("mba-28"; "(& ?a21 (~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46)))))" => "(+ 0 (~ (| (~ ?a21) (^ ?a46 ?a48))))"),
+        rewrite!("mba-29"; "(~ (& (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))) (~ ?a21)))" => "(~ (& (~ ?a21) (^ ?a46 ?a48)))"),
+        rewrite!("mba-30"; "(~ (& ?a21 (~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))))))" => "(| (~ ?a21) (^ ?a46 ?a48))"),
+        rewrite!("mba-31"; "(& (~ ?a48) (~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46))))))" => "(~ (| ?a48 (^ ?a21 ?a46)))"),
+        rewrite!("mba-32"; "(~ (& (~ ?a48) (~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46)))))))" => "(| ?a48 (^ ?a21 ?a46))"),
+        rewrite!("mba-33"; "(+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46))))" => "(+ (* 2 -1) (* (* 1 -1) (^ ?a21 (^ ?a46 ?a48))))"),
+        rewrite!("mba-34"; "(+ (^ ?a48 (^ ?a21 ?a46)) (+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46)))))" => "(* 2 -1)"),
     ]
 }
 
@@ -804,8 +1056,7 @@ fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
 
     move |egraph, _, subst| {
-        if let Some(c) = &egraph[subst[var]].data {
-            //println!("CONST! {}", c.0);
+        if let Some(c) = read_constant(&egraph[subst[var]].data) {
             return true;
         } else {
             return false;
@@ -819,14 +1070,14 @@ fn is_power_of_two(var: &str, var_to_str: &str) -> impl Fn(&mut EEGraph, Id, &Su
 
     move |egraph, _, subst| {
         /* */
-        let v1 = if let Some(c) = &egraph[subst[var]].data {
-            c.0 .0 & (c.0 .0 - 1) == 0 && c.0 .0 != 0
+        let v1 = if let Some(c) = read_constant(&egraph[subst[var]].data) {
+            c & (c - 1) == 0 && c != 0
         } else {
             false
         };
 
-        let v2 = if let Some(c) = &egraph[subst[var2]].data {
-            c.0 .0 & (c.0 .0 - 1) == 0 && c.0 .0 != 0
+        let v2 = if let Some(c) = read_constant(&egraph[subst[var2]].data) {
+            c & (c - 1) == 0 && c != 0
         } else {
             false
         };
@@ -852,8 +1103,64 @@ fn is_power_of_two(var: &str, var_to_str: &str) -> impl Fn(&mut EEGraph, Id, &Su
     }
 }
 
+fn print_recexpr(
+    egraph: &mut EEGraph,
+    expr: RecExpr<Expr>,
+    is_first: bool,
+    runner: &Extractor<'_, EGraphCostFn<'_>, Expr, ConstantFold>,
+) {
+    let nodes = expr.as_ref();
+    let last = nodes.last();
+    println!("{}", nodes.len());
+    visit_all(egraph, last.unwrap(), runner);
+    todo!()
+}
+
+fn visit_all(
+    egraph: &mut EEGraph,
+    expr: &Expr,
+    runner: &Extractor<'_, EGraphCostFn<'_>, Expr, ConstantFold>,
+) {
+    let added = egraph.add(expr.clone());
+    let classification = egraph[added].data.as_ref().unwrap().0;
+    println!("{:#?}: {}", classification, expr);
+
+    let mut x = |id: &Id| print_recexpr(egraph, runner.find_best(*id).1, true, runner);
+    match expr {
+        Expr::Add([a, b]) => {
+            x(a);
+            x(b)
+        }
+        Expr::Mul([a, b]) => {
+            x(a);
+            x(b)
+        }
+        Expr::Pow([a, b]) => {
+            x(a);
+            x(b)
+        }
+        Expr::And([a, b]) => {
+            x(a);
+            x(b)
+        }
+        Expr::Or([a, b]) => {
+            x(a);
+            x(b)
+        }
+        Expr::Xor([a, b]) => {
+            x(a);
+            x(b)
+        }
+        Expr::Neg([a]) => {
+            x(a);
+        }
+        Expr::Constant(def) => {}
+        Expr::Symbol(_) => {}
+    }
+}
+
 /// parse an expression, simplify it using egg, and pretty print it back out
-fn simplify(s: &str) -> String {
+fn simplify(s: &str, optimize_for_linearity: bool) -> String {
     // parse the expression, the type annotation tells it which Language to use
     let expr: RecExpr<Expr> = s.parse().unwrap();
 
@@ -862,7 +1169,7 @@ fn simplify(s: &str) -> String {
     let explain_equivalence = false;
     let mut runner: Runner<Expr, ConstantFold> = if !explain_equivalence {
         Runner::default()
-            .with_time_limit(Duration::from_millis(1000))
+            .with_time_limit(Duration::from_millis(5000))
             .with_expr(&expr)
     } else {
         Runner::default()
@@ -879,21 +1186,69 @@ fn simplify(s: &str) -> String {
     // the Runner knows which e-class the expression given with `with_expr` is in
     let root = runner.roots[0];
 
-    // use an Extractor to pick the best element of the root eclass
-    let extractor = Extractor::new(&runner.egraph, AstSize);
-    let (best_cost, best) = extractor.find_best(root);
-    let duration = start.elapsed();
-    println!("Time elapsed in simplify() is: {:?}", duration);
-    println!("Simplified {} to {} with  cost {}", expr, best, best_cost);
+    if optimize_for_linearity {
+        // use an Extractor to pick the best element of the root eclass
+        let cost_func = EGraphCostFn {
+            egraph: &runner.egraph,
+        };
 
+        let extractor = Extractor::new(&runner.egraph, cost_func);
+        let (best_cost, best) = extractor.find_best(root);
+        let classification = &runner.egraph[root].data.clone().unwrap().0;
+
+        let duration = start.elapsed();
+        println!("Time elapsed in simplify() is: {:?}", duration);
+
+        println!(
+            "Simplified {} \n\nto:\n{}\n with cost {}\n\n",
+            expr, best, best_cost
+        );
+
+        dbg!(classification);
+
+        //print_recexpr(&mut runner.egraph, best.clone(), true, &extractor);
+
+        best.to_string()
+    } else {
+        // use an Extractor to pick the best element of the root eclass
+        let cost_func = AstSize;
+
+        let extractor = Extractor::new(&runner.egraph, AstSize);
+        let (best_cost, best) = extractor.find_best(root);
+        let classification = &runner.egraph[root].data.clone().unwrap().0;
+
+        let duration = start.elapsed();
+        println!("Time elapsed in simplify() is: {:?}", duration);
+
+        println!("Simplified {} to {} with cost {}", expr, best, best_cost);
+
+        dbg!(classification);
+
+        best.to_string()
+    }
+
+    /*
     if explain_equivalence {
         println!(
             "explained: {}",
             runner.explain_equivalence(&expr, &best).get_flat_string()
         );
     }
+    */
+}
 
-    best.to_string()
+struct EGraphCostFn<'a> {
+    egraph: &'a EGraph<Expr, ConstantFold>,
+}
+
+impl<'a> CostFunction<Expr> for EGraphCostFn<'a> {
+    type Cost = usize;
+    fn cost<C>(&mut self, enode: &Expr, mut costs: C) -> Self::Cost
+    where
+        C: FnMut(Id) -> Self::Cost,
+    {
+        return get_cost(self.egraph, enode) as usize;
+    }
 }
 
 fn main() {
@@ -908,16 +1263,49 @@ fn main() {
     let expr = if next.is_some() {
         next.unwrap()
     } else {
-        "(* y (+ (* (^ y x) -11) (+ (* (& x (~ y)) -19) (+ (* -36 (+ (& y x) (~ (| y x)))) (+ -31 (+ (* 6 (| y (~ x))) (* (& y (~ x)) -25)))))))".to_owned()
+        "(+ (+ (+ (* (+ y (^ y (~ x))) (+ (* (| y x) (* x (* (* y x) (* y -4963545269917450240)))) (* (* x 1053768439367204864) (* y (& x (~ y)))))) (* (^ y (~ x)) (* (^ y (~ x)) (* (^ y x) 6500170837692252160)))) (+ (+ (+ (+ (* (& x (~ y)) (+ (* (^ y (~ x)) (* (^ y (~ x)) -1242936803585949696)) (* 1242936803585949696 (* (& y x) (& x (~ y)))))) (+ (* (* (^ y x) (& y x)) (+ (* (^ y x) (+ (* (| y x) 156381889551138816) (* -1 (* (* y x) 4494399601264033792)))) (+ (* (* y y) (* -1 8701149918271635456)) (* (* y x) (* (* y x) 2481772634958725120))))) (+ (* -1 (+ (* (^ y (~ x)) (* (| y x) (* (^ y (~ x)) (* (| y x) 6049732328593293312)))) (* 6347279416522964992 (* (| y x) (* (* (& y x) (| y x)) (+ y (^ y (~ x)))))))) (+ (* (* (^ y x) (^ y x)) (+ (* (^ y x) 9197308388596252672) (* (* y x) 4494399601264033792))) (+ (* (| y x) (* x (* (* y x) (* y -4963545269917450240)))) (* (+ (* (& x (~ y)) 1242936803585949696) (* y 414312267861983232)) (* y (* y -1)))))))) (+ (+ (+ 7477701790215481006 (* (^ y x) (* (^ y x) 2647290229186101248))) (+ (+ (* (| y x) (* (+ (& x (~ y)) (+ (^ y (~ x)) (* (& y x) -1))) (* y 7553939277059457024))) (* (* (* y y) (* 
+            x 7029109185614708736)) (* (+ (& x (~ y)) (* (& y x) -1)) (* x (^ y (~ x)))))) (+ (+ (* 8701149918271635456 (* (& x (~ y)) (* y (* (^ y x) (& x (~ y)))))) (* (+ (* 579243341355417600 (* y y)) (* (& y x) (* (^ y x) 1044444237166280704))) (* y (+ (& x (~ y)) (^ y (~ x)))))) (+ (* -1 (+ (* y (+ (* (* x 1053768439367204864) (* y (& y x))) (* x (* x (* y 7878655039613435904))))) (+ 
+            (* (* (^ y (~ x)) (^ y (~ x))) (* (* y x) 8696487817171173376)) (* (^ y x) (* (| y x) 7857583156965146624))))) (* (& x (~ y)) (+ (* (^ y (~ x)) 7381264205732642816) (* (| y x) (* (| y x) 4539428588151111680)))))))) (+ (* (+ (& x (~ y)) (^ y (~ x))) (+ (* (* (& y x) (& y x)) (* (^ y x) 8701149918271635456)) (* (* (| y x) (| y x)) (* (| y x) -208509186068185088)))) (+ (* (* (& x 
+            (~ y)) (& x (~ y))) (+ (* (* y y) 868865012033126400) (* (& y x) (* -1 (+ (* (& x (~ y)) 579243341355417600) (* (^ y (~ x)) 1737730024066252800)))))) (+ (* (^ y (~ x)) (* (+ (* (& x (~ y)) (& x (~ y))) (* (& y x) (& y x))) (* (^ y (~ x)) 868865012033126400))) (+ (+ (* -1 (+ (* 9078561201515921408 (* y (* y (* y y)))) (* (* (& y x) (& x (~ y))) (* (^ y x) (* (& x (~ y)) 8701149918271635456))))) (* (* (* y x) 4494399601264033792) (* (* (^ y x) (^ y x)) (+ y (+ (& x (~ y)) (^ y (~ x))))))) (+ (* (* (& y x) (& y x)) (+ (* 2900383306090545152 (* (^ y x) (* (& y x) -1))) (* (^ y (~ x)) (+ (* (& x (~ y)) 1737730024066252800) (* -1 (* (& y x) 579243341355417600)))))) (* (^ y (~ x)) (+ (* (^ y (~ x)) (* (* y y) 868865012033126400)) (* (* y (& x (~ y))) (* (& 
+            x (~ y)) 1737730024066252800))))))))))) (+ (* (^ y (~ x)) (* (* y y) (* x 1053768439367204864))) (+ (* (+ y (^ y (~ x))) (+ (* (* (^ y x) (| y x)) (+ (* (| y x) -312763779102277632) (+ (* (* y x) -469145668653416448) (* (^ y x) -156381889551138816)))) (* (* y (* x x)) (+ (* (^ y x) (* y -2481772634958725120)) (* 1240886317479362560 (* -1 (* x (* y y)))))))) (+ (* (| y x) (+ (* 
+            (& x (~ y)) (+ (* (& x (~ y)) (* x (* y -9074598492889939968))) (* (^ y x) (* y 6347279416522964992)))) (+ (* (^ y (~ x)) (* (* (| y x) (& x (~ y))) 6347279416522964992)) (+ (+ (* (^ y (~ x)) (* (* y -297547087929671680) (* x (& y x)))) (* x (* y -2563002698592944128))) (+ (* (* x (* y y)) (* (| y x) -469145668653416448)) (* (^ y x) (* -1 (+ (* 6049732328593293312 (* (^ y (~ x)) (^ y (~ x)))) (* (& y x) (* y 6347279416522964992)))))))))) (+ (+ (* (* (^ y x) (^ y (~ x))) (* (^ y (~ x)) (* y 8701149918271635456))) (* -1 (+ (* (| y x) (* (^ y (~ x)) (* (& y x) 7553939277059457024))) (* (* x (* y (* y y))) 8696487817171173376)))) (+ (+ (+ (* (* (& y x) (& y x)) (* (& y x) (* (* y x) (* -1 4350574959135817728)))) (* (& x (~ y)) (+ (* (& x (~ y)) (* (* y x) (* (& x (~ y)) 4350574959135817728))) (* (^ y (~ x)) (* (^ y x) (* y -1044444237166280704)))))) (+ (* (+ (* x (* (^ y (~ x)) 4350574959135817728)) (+ (* (& x (~ y)) (* x -5395019196302098432)) (* (& y x) (* x 5395019196302098432)))) (* y (* (^ y (~ x)) (^ y (~ x))))) (+ (* (* (& y x) (& x (~ y))) (* 9074598492889939968 (* (^ y x) (* y x)))) (* (* y y) (* (* x x) (* y 4859271590048694272)))))) (+ (* (* (& x (~ y)) (^ y (~ x))) (* (| y x) 7553939277059457024)) (* (& y x) (* (* y (* y y)) (* x 5395019196302098432)))))))))) (+ (* (& x (~ y)) (+ (* (* (^ y x) (& x (~ y))) (+ (* (^ y (~ x)) 8701149918271635456) (* (& x (~ y)) 2900383306090545152))) (+ (+ (* (* (^ y x) (| y x)) (+ (* (| y x) -312763779102277632) (+ (* (* y x) -469145668653416448) (* (^ y 
+            x) -156381889551138816)))) (* (* y (* x x)) (+ (* (^ y x) (* y -2481772634958725120)) (* 1240886317479362560 (* -1 (* x (* y y))))))) (* (| y x) (+ (* (| y x) (* y 6347279416522964992)) (* x (* (* y x) (* y -4963545269917450240)))))))) (+ (+ (+ (* (* y (* x (* (| y x) (| y x)))) (* (& y x) 469145668653416448)) (* (* (| y x) (& x (~ y))) (+ (* (* y y) -1044444237166280704) (* (^ y (~ x)) (* -1 (* y 2088888474332561408)))))) (+ (* (& y x) (+ (* -1 (* (* (* y (* y y)) (* x x)) 7029109185614708736)) (+ (* (* (| y x) (| y x)) (+ (* (^ y x) 312763779102277632) (* (| y x) 208509186068185088))) (* (* y (| y x)) (+ (* (* x x) (* y 4963545269917450240)) (* (^ y x) (* x 469145668653416448))))))) (+ (* -1 (+ (* (^ y x) 911170646057156606) (+ (* x (* y 1366755969085734909)) (* (| y x) (+ (* (| y x) 7857583156965146624) 1822341292114313212))))) (* (* (^ y x) (& y x)) (+ (* (& y x) 6500170837692252160) (* (& x (~ y)) 5446402398325047296)))))) (+ (* (* (^ y (~ x)) (^ y (~ x))) (+ (* -5395019196302098432 (* x (* y y))) (+ (* (^ y (~ x)) (* y 579243341355417600)) (+ (* (& x (~ y)) (* y 1737730024066252800)) (* -1 (+ (* (& y x) (* y 1737730024066252800)) (* (^ y (~ x)) (* (^ y (~ x)) 9078561201515921408)))))))) (+ (+ (* (| y x) (+ (* (* y y) (+ (* (& y x) 1044444237166280704) (* y 5800766612181090304))) (* (* (^ y (~ x)) (^ y (~ x))) (+ (* y -1044444237166280704) (* (^ y (~ x)) 5800766612181090304))))) (+ (* (^ y x) (+ (* (* y (^ y x)) (* y 7710938954706452480)) (* (* (^ y x) (& x (~ y))) (+ (* (^ y (~ x)) -3024866164296646656) (* (& x (~ y)) 7710938954706452480))))) (+ (* (& y x) (* (+ (& x (~ y)) (^ y (~ x))) (* -1 (* (* y y) 1737730024066252800)))) (+ (* (* -1 (+ (* (^ y (~ x)) 579243341355417600) (* (& x (~ y)) 1737730024066252800))) (* (^ y (~ x)) (* (& y x) (^ y (~ x))))) (* (* x (& x (~ y))) (* (| y x) (* y 6809142882226667520))))))) (+ (+ (* (* (^ y x) (& x (~ y))) (+ (* -1 (* (^ y (~ x)) (* x (* y 9074598492889939968)))) (+ (* (^ y x) (* y -3024866164296646656)) (* (* y x) (* (& x (~ y)) 4686072790409805824))))) (+ (* (^ y (~ x)) (* (* (^ y x) (^ y (~ x))) (* (^ y x) 7710938954706452480))) (+ (* (+ (* (& x (~ y)) (& x (~ y))) (* (& y x) (& y x))) (* (| y x) (* y -1044444237166280704))) (+ (* (* (& y x) (& x (~ y))) (* (^ y x) (* (^ y x) 3024866164296646656))) (* (+ (& x (~ y)) (^ y (~ x))) (+ (* (| y x) (* (^ y x) 4539428588151111680)) (* (* y (* x x)) (* y 4859271590048694272)))))))) (+ (* (& y x) (+ (* (^ y x) (* -1 2688616885544550400)) (* (& y x) (* y -1242936803585949696)))) (+ (* (^ y x) (+ (* (| y x) (* (^ y x) -156381889551138816)) (* y 2688616885544550400))) (* y (+ (* (^ y (~ x)) (+ (* (| y x) (* y -1044444237166280704)) (* (^ y x) (* (^ y x) -3024866164296646656)))) (+ (* (+ (& x (~ y)) (^ y (~ x))) (* (^ y x) (* y 8701149918271635456))) (* (& y x) (* (& y x) (* (^ y x) (* x 4686072790409805824)))))))))))))))) (+ (+ (* (* y (| y x)) (+ (* (^ y x) 4539428588151111680) (* (+ y (^ y (~ x))) (* x 6809142882226667520)))) (+ (+ (+ (* (^ y x) (* x (+ (* (* (^ y (~ x)) (^ y (~ x))) (* y 4686072790409805824)) (* 9074598492889939968 (* (& y x) (* y (+ y (^ y (~ x))))))))) (+ (* 4539428588151111680 (* (+ y (^ y (~ x))) (* (| y x) (| y x)))) (* (* x -5395019196302098432) (+ (* (^ y (~ x)) (* y (* (& y x) (& y x)))) (* (& x (~ y)) (* y (* y y))))))) (+ (+ (* (* (& y x) (& x (~ y))) (+ (* -5395019196302098432 (* (& y x) (* y x))) (* (* y (& x (~ y))) (* x 5395019196302098432)))) (+ (+ (* (& y x) (* (| y x) (* (^ y x) (* -1 4539428588151111680)))) (* (* (& x (~ y)) (& x (~ y))) (+ 3690632102866321408 (* (^ y (~ x)) (* y (* x -5395019196302098432)))))) (* (& y x) (+ (* (| y x) (+ (* (^ y (~ x)) (* y 2088888474332561408)) (* (* -1 (& x (~ y))) 7553939277059457024))) (+ (* -1 (+ (* (* y (* x x)) (* y 4859271590048694272)) (* (& x (~ y)) 7381264205732642816))) (+ (* (^ y x) (* x (* y 5818800595741442048))) (* (& y x) 3690632102866321408))))))) (+ (* (* (| y x) (& x (~ y))) (+ (* (& y x) (* y 2088888474332561408)) (* (^ y (~ x)) (* (^ y (~ x)) -1044444237166280704)))) (* (* (^ y x) 9197308388596252672) (* (* (^ y x) (^ y x)) (+ y (+ (& x (~ y)) (^ y (~ x))))))))) (+ (* (| y x) (* y 5377233771089100800)) (+ (+ (* (* y x) (+ (* (* (| y x) (| y x)) -469145668653416448) (* (^ y x) (+ (* (| y x) -469145668653416448) (+ (* y (* x -2481772634958725120)) 7941870687558303744))))) (* (& x (~ y)) (+ (* (* (^ y x) (^ y (~ x))) (+ (* (^ y (~ x)) 8701149918271635456) (* (& y x) 1044444237166280704))) (+ (* (* (& y x) (& y x)) (+ (* (| y x) -1044444237166280704) (* (& x (~ y)) 868865012033126400))) (+ (* (* (| y x) (& x (~ y))) (+ (* (& y x) 1044444237166280704) (+ (* (^ y (~ x)) -1044444237166280704) (* (& x (~ y)) 5800766612181090304)))) (* -1 (+ (* (* (& y x) (& y x)) (* (& y x) 579243341355417600)) (+ (* 7656705681105354752 (* (^ y (~ x)) (* (& y x) (* y x)))) (* 9078561201515921408 (* (& x (~ y)) (* (& x (~ y)) (& x (~ y))))))))))))) (+ (* (& y x) (+ (* -1 (+ (* (| y x) 5377233771089100800) 2504084959427864238)) (+ (+ (* (* (& y x) (& y x)) 414312267861983232) (* x (* -1 (* y 4032925328316825600)))) (+ (* (& x (~ y)) (* (^ y (~ x)) 2485873607171899392)) (* (+ (& x (~ y)) (^ y (~ x))) (* (& y x) -1242936803585949696)))))) (+ (* (* (& y x) (^ y (~ x))) (+ (* -1 7381264205732642816) (* (^ y (~ x)) 1242936803585949696))) (+ (* (* y y) 3690632102866321408) (* (& y x) (+ (* (* (| y x) (^ y (~ x))) (+ (* (& y x) -1044444237166280704) (* (^ y (~ x)) 1044444237166280704))) (+ (* (| y x) (* (& x (~ y)) (* (^ y (~ x)) 2088888474332561408))) (+ (* (* (| y x) (& x (~ y))) (+ (* x (* y -297547087929671680)) (* (^ y x) (* -1 6347279416522964992)))) (* -1 (+ (* (+ (& x (~ y)) (^ y (~ x))) (* (* y y) (* x 7656705681105354752))) (* (* (& y x) (| y x)) (+ (* (* y x) 9074598492889939968) (* (& y x) 5800766612181090304)))))))))))))))) (+ (+ (+ (+ (+ (* (^ y (~ x)) (+ (* 6347279416522964992 (* (| y x) (* (^ y x) (+ y (& x (~ y)))))) (* -1 (+ (* (| y x) (* (^ y x) (* (& y x) 6347279416522964992))) (* (^ y (~ x)) (* y (* (* x x) (* y 5708817444047421440)))))))) (+ (* (* (& y x) (| y x)) (+ (* (| y x) (* -1 4539428588151111680)) (* (* y x) -6809142882226667520))) (* (^ y x) (* x (* (* y (* y y)) 4686072790409805824))))) (+ (+ (+ (* (^ y (~ x)) (* (& x (~ y)) (* (* y y) (* x 7656705681105354752)))) (+ (* (+ y (^ y (~ x))) (* (* (| y x) (& x (~ y))) (* (* y x) 297547087929671680))) (* (+ (* (& x (~ y)) (& x (~ y))) (* (& y x) (& y x))) (* -5395019196302098432 (* x (* y y)))))) (+ (* (& y x) (+ (* (& y x) (* (* y y) 868865012033126400)) (* 1737730024066252800 (* (* y (& x (~ y))) (+ (& y x) (* -1 (& x (~ y)))))))) (* (* x (* y (* y y))) (+ (* y 4350574959135817728) (* (^ y (~ x)) -5395019196302098432))))) (+ (+ (* (+ (& x (~ y)) (^ y (~ x))) (* y (* (^ y x) (* x -5818800595741442048)))) (* (* (^ y (~ x)) 2900383306090545152) (* (^ y (~ x)) (* (^ y x) (^ y (~ x)))))) 
+            (+ (* (* (& y x) (& y x)) (+ (* (^ y x) (* (^ y x) 7710938954706452480)) (* y (* -1 (* (* x x) (* y 5708817444047421440)))))) (+ (* -1 (+ (* (| y x) (* (| y x) (* 6347279416522964992 (* (& y x) (& x (~ y)))))) (* (* (| y x) (* (| y x) 6049732328593293312)) (+ (* y y) (* (& y x) (& y x)))))) (+ (* (* (& x (~ y)) (& x (~ y))) (* (& x (~ y)) (* y 579243341355417600))) (+ (* (^ y (~ x)) (* (| y x) (* (| y x) (* y 6347279416522964992)))) (* (* (& y x) (^ y (~ x))) (+ (* (& y x) (* y 1737730024066252800)) (* -1 (* (* y (& x (~ y))) 3475460048132505600))))))))))) (+ (+ (* (* (| y x) -5446402398325047296) (+ (* (& y x) (& y x)) (+ (* (^ y (~ x)) (^ y (~ x))) (+ (* y y) (* (& x (~ y)) (& x (~ y))))))) (+ (* (* (* y (* y y)) (* x x)) (+ (* (& y x) (* x 1240886317479362560)) (* (+ (& x (~ y)) (^ y (~ x))) 7029109185614708736))) (+ (* (* y (^ y x)) (+ (* (^ y (~ x)) -5446402398325047296) (* y 6500170837692252160))) (+ (* x (* (^ y x) (* (* y y) -5818800595741442048))) (+ (* (* (& x (~ y)) (^ y (~ x))) (+ (* (* y y) 1737730024066252800) (* 579243341355417600 (* (^ y (~ x)) (^ y (~ x)))))) (+ (* (+ y (^ y (~ x))) (* (^ y x) (* (^ y x) -8088514889816997888))) (* -1 (+ (* (* (& x (~ y)) (& x (~ y))) (* (| y x) (* (| y x) 6049732328593293312))) (+ (* (+ (& x (~ y)) (^ y (~ x))) (+ (* (* x 1053768439367204864) (* y (& y x))) (* (^ y x) (* (* y y) (* x 9074598492889939968))))) (+ (* (+ (* (& x (~ y)) (& x (~ y))) (* (& y x) (& y x))) (* (* y x) 8696487817171173376)) (+ (* 5708817444047421440 (* (* x (* y (& x (~ y)))) (* x (* y (& x (~ y)))))) (+ (* (* y y) (* (* (& x (~ y)) (* x (& y x))) (* x 7029109185614708736))) (* (* (^ y x) 9197308388596252672) (* (& y x) (* (^ y x) (^ y x)))))))))))))))) (* (* (& x (~ y)) (& x (~ y))) (+ (* (^ y (~ x)) (* (& x (~ y)) 579243341355417600)) (* (| y x) (* (^ y x) (* -1 6049732328593293312))))))) (+ (+ (* y (+ (* -1 (* 5708817444047421440 (* (* y (* 
+            y y)) (* x x)))) (* (^ y (~ x)) (* 297547087929671680 (* (| y x) (* y x)))))) (* (| y x) (+ (* (^ y (~ x)) (* (^ y (~ x)) (* x (* y -9074598492889939968)))) (+ (* (* y y) (+ (* x (* y -9074598492889939968)) (* (^ y x) (* -1 6049732328593293312)))) (* y (* (* y -297547087929671680) (* x (& y x)))))))) (+ (* (^ y x) (+ (* (* (& y x) (| y x)) (* (& y x) (* -1 6049732328593293312))) (* (^ y x) (+ (* (& x (~ y)) -8088514889816997888) (* (& y x) 8088514889816997888))))) (+ (* (* (& y x) (+ y (^ y (~ x)))) (* (^ y x) (* (^ y x) 3024866164296646656))) (* (& y x) (* -1 (+ (* (* (^ y x) (^ y (~ x))) (* (^ y (~ x)) 8701149918271635456)) (+ (* (+ (* y 579243341355417600) (* (& y x) 9078561201515921408)) (* (& y x) (& y x))) (* y (* 579243341355417600 (* y y))))))))))) (+ (+ (* (& x (~ y)) (+ (* (^ y (~ x)) (* y -2485873607171899392)) (* (| y x) (* (| y x) (* (* y x) -469145668653416448))))) (+ (+ (* (* (& x (~ y)) (& x (~ y))) (+ (* (^ y (~ x)) -1242936803585949696) (* -1 (* (& x (~ y)) 414312267861983232)))) (* (* (^ y x) (& x (~ y))) (+ (* (^ y (~ x)) -5446402398325047296) (* (& x (~ y)) 6500170837692252160)))) (+ (* -5446402398325047296 (* (& x (~ y)) (* y (^ y x)))) (+ (* (* y y) (* (& y x) 1242936803585949696)) (* (* y (& x (~ y))) (* (& x (~ y)) -1242936803585949696)))))) (+ (+ (* y (* (| y x) (* (| y x) (* x (* (^ y (~ x)) -469145668653416448))))) (+ (* (* (& y x) (+ y (^ y (~ x)))) (* (^ y x) 5446402398325047296)) (* (* (| y x) (| y x)) (+ (* -208509186068185088 (+ (| y x) (* y (| y x)))) (* (^ y x) -312763779102277632))))) (+ (+ (* (+ (& x (~ y)) (^ y (~ x))) (+ (+ 2504084959427864238 (* (& y x) (* y 2485873607171899392))) (+ (* (| y x) 5377233771089100800) (+ (* x (* y 4032925328316825600)) (* (^ y x) 2688616885544550400))))) (+ (* (& x (~ y)) (* y 7381264205732642816)) (+ (* (* (^ y (~ x)) (^ y (~ x))) (+ 3690632102866321408 (* -1 (* (^ y (~ x)) 414312267861983232)))) 
+            (+ (+ (* (+ y (^ y (~ x))) (* (^ y (~ x)) (* y -1242936803585949696))) (* (* y (& y x)) (+ (* -1 7381264205732642816) (* (& y x) (* (^ y x) 8701149918271635456))))) (* (^ y x) (* (* y y) (* y 2900383306090545152))))))) (* y (+ (* (^ y (~ x)) 7381264205732642816) (+ (* -1 (* (* y (* x x)) (* (* y x) 1240886317479362560))) (+ 2504084959427864238 (* x (* y 4032925328316825600))))))))))))".to_owned()
     };
 
     println!("Attempting to simplify expression: {}", expr);
 
-    let mut simplified = simplify(expr.as_str());
+    let mut simplified = simplify(expr.as_str(), true);
 
-    for _ in 0..0 {
-        simplified = simplify(simplified.clone().as_ref());
+    for i in 0..10 {
+        if i % 2 == 0 {
+            simplified = simplify(simplified.clone().as_ref(), true);
+        } else {
+            simplified = simplify(simplified.clone().as_ref(), false);
+        }
     }
 
+    for i in 0..10 {
+        if i % 2 == 0 {
+            simplified = simplify(simplified.clone().as_ref(), true);
+        } else {
+            simplified = simplify(simplified.clone().as_ref(), true);
+        }
+    }
+
+    for i in 0..10 {
+        if i % 2 == 0 {
+            simplified = simplify(simplified.clone().as_ref(), false);
+            simplified = simplify(simplified.clone().as_ref(), false);
+        } else {
+            simplified = simplify(simplified.clone().as_ref(), true);
+            simplified = simplify(simplified.clone().as_ref(), true);
+        }
+    }
+
+    simplified = simplify(simplified.clone().as_ref(), false);
+    simplified = simplify(simplified.clone().as_ref(), false);
     println!("{}", simplified);
 }
