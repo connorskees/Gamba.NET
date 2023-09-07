@@ -1,12 +1,8 @@
-use core::panic;
 use std::time::{Duration, Instant};
 
 use egg::*;
 
 type Cost = i64;
-
-type ApplierEGraph = egg::EGraph<Expr, BitwiseAnalysis>;
-type ApplierREwrite = egg::Rewrite<Expr, BitwiseAnalysis>;
 
 pub type EEGraph = egg::EGraph<Expr, ConstantFold>;
 pub type Rewrite = egg::Rewrite<Expr, ConstantFold>;
@@ -36,14 +32,14 @@ struct BitwiseAnalysis;
 
 #[derive(Debug)]
 pub struct BitwisePowerOfTwoFactorApplier {
-    x_factor: String,
-    y_factor: String,
+    x_factor: &'static str,
+    y_factor: &'static str,
 }
 
 #[derive(Debug)]
 pub struct DuplicateChildrenMulAddApplier {
-    const_factor: String,
-    x_factor: String,
+    const_factor: &'static str,
+    x_factor: &'static str,
 }
 
 impl Expr {
@@ -73,95 +69,38 @@ fn try_fold_constant(egraph: &EEGraph, enode: &Expr) -> Option<(i64, PatternAst<
         })
     };
 
-    //println!("applying const prop to: {}", enode);
     Some(match enode {
         Expr::Constant(c) => {
-            let msg = format!("{}", c).parse().unwrap();
-            //println!("constant const prop: {}", msg);
+            let msg = c.to_string().parse().unwrap();
             (*c, msg)
         }
         Expr::Add([a, b]) => {
-            let msg = format!("(+ {} {})", x(a)??, x(b)??).parse().unwrap();
-            //println!("add const prop: {}", msg);
-            (x(a)??.wrapping_add(x(b)??), msg)
+            let val = x(a)??.wrapping_add(x(b)??);
+            (val, val.to_string().parse().unwrap())
         }
-        Expr::Mul([a, b]) => (
-            x(a)??.wrapping_mul(x(b)??),
-            format!("(* {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Pow([a, b]) => (
-            x(a)??.pow((x(b)??).try_into().unwrap()),
-            format!("(** {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::And([a, b]) => (
-            x(a)?? & x(b)??,
-            format!("(& {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Or([a, b]) => (
-            x(a)?? | x(b)??,
-            format!("(| {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Xor([a, b]) => (
-            x(a)?? ^ x(b)??,
-            format!("(^ {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
+        Expr::Mul([a, b]) => {
+            let val = x(a)??.wrapping_mul(x(b)??);
+            (val, val.to_string().parse().unwrap())
+        }
+        Expr::Pow([a, b]) => {
+            let val = x(a)??.pow((x(b)??).try_into().unwrap());
+            (val, val.to_string().parse().unwrap())
+        }
+        Expr::And([a, b]) => {
+            let val = x(a)?? & x(b)??;
+            (val, val.to_string().parse().unwrap())
+        }
+        Expr::Or([a, b]) => {
+            let val = x(a)?? | x(b)??;
+            (val, val.to_string().parse().unwrap())
+        }
+        Expr::Xor([a, b]) => {
+            let val = x(a)?? ^ x(b)??;
+            (val, val.to_string().parse().unwrap())
+        }
         Expr::Neg([a]) => {
-            //println!("NEGATION: ~ {}", x(a)?);
-            let msg = format!("(~ {})", x(a)??).parse().unwrap();
-            //println!("{}", msg);
-            let result = (!x(a)??, msg);
-            result
-        }
-        Expr::Symbol(_) => return None,
-    })
-}
-
-fn to_pattern_ast(egraph: &EEGraph, enode: &Expr) -> Option<(i64, PatternAst<Expr>)> {
-    let x = |i: &Id| {
-        egraph[*i].data.as_ref().map(|c| match c.0 {
-            AstClassification::Constant { value } => Some(value),
-            _ => None,
-        })
-    };
-
-    //println!("applying const prop to: {}", enode);
-    Some(match enode {
-        Expr::Constant(c) => {
-            let msg = format!("{}", c).parse().unwrap();
-            //println!("constant const prop: {}", msg);
-            (*c, msg)
-        }
-        Expr::Add([a, b]) => {
-            let msg = format!("(+ {} {})", x(a)??, x(b)??).parse().unwrap();
-            //println!("add const prop: {}", msg);
-            (x(a)?? + x(b)??, msg)
-        }
-        Expr::Mul([a, b]) => (
-            x(a)?? * x(b)??,
-            format!("(* {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Pow([a, b]) => (
-            x(a)??.pow((x(b)??).try_into().unwrap()),
-            format!("(** {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::And([a, b]) => (
-            x(a)?? & x(b)??,
-            format!("(& {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Or([a, b]) => (
-            x(a)?? | x(b)??,
-            format!("(| {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Xor([a, b]) => (
-            x(a)?? ^ x(b)??,
-            format!("(^ {} {})", x(a)??, x(b)??).parse().unwrap(),
-        ),
-        Expr::Neg([a]) => {
-            //println!("NEGATION: ~ {}", x(a)?);
-            let msg = format!("(~ {})", x(a)??).parse().unwrap();
-            //println!("{}", msg);
-            let result = (!x(a)??, msg);
-            result
+            let val = !x(a)??;
+            (val, val.to_string().parse().unwrap())
         }
         Expr::Symbol(_) => return None,
     })
@@ -171,47 +110,41 @@ fn classify(
     egraph: &EEGraph,
     enode: &Expr,
 ) -> Option<(AstClassification, Option<PatternAst<Expr>>)> {
-    //let child_eval = |x: &Expr| eval(egraph, x);
     let op = |i: &Id| egraph[*i].data.as_ref().map(|c| c.0);
 
     // If we have any operation that may be folded into a constant(e.g. x + 0, x ** 0), then do it.
-    let const_folded: Option<(i64, RecExpr<ENodeOrVar<Expr>>)> = try_fold_constant(egraph, enode);
-    if const_folded.is_some() {
-        let unwrapped = const_folded.unwrap();
+    if let Some(const_folded) = try_fold_constant(egraph, enode) {
         return Some((
             AstClassification::Constant {
-                value: (unwrapped.0),
+                value: (const_folded.0),
             },
-            Some(unwrapped.1),
+            Some(const_folded.1),
         ));
     }
 
     // Otherwise const folding has failed. Now we need to classify it.
     let result: AstClassification = match enode {
         Expr::Constant(def) => AstClassification::Constant { value: *def },
-        Expr::Symbol(def) => AstClassification::Linear { is_variable: true },
-        Expr::Pow([a, b]) => AstClassification::Nonlinear,
+        Expr::Symbol(..) => AstClassification::Linear { is_variable: true },
+        Expr::Pow(..) => AstClassification::Nonlinear,
         Expr::Mul([a, b]) => {
             // At this point constant propagation has handled all cases where two constant children are used.
             // So now we only have to handle the other cases. First we start by checking the classification of the other(non constant) child.
             let other = get_non_constant_child_classification(op(a)?, op(b)?);
 
-            // If neither operand is a constant then the expression is not linear.
-            if other.is_none() {
-                return Some((AstClassification::Nonlinear, None));
-            }
-
-            let result = match other.unwrap() {
-                AstClassification::Unknown => panic!("Hopefully this shouldn't happen"),
-                AstClassification::Constant { value } => panic!("Constant propagation should have already handled multiplication of two constants!"),
+            let result = match other {
+                Some(AstClassification::Unknown) => unreachable!("Hopefully this shouldn't happen"),
+                Some(AstClassification::Constant { .. }) => unreachable!("Constant propagation should have already handled multiplication of two constants!"),
                 // const * bitwise = mixed expression
-                AstClassification::Bitwise => AstClassification::Mixed,
+                Some(AstClassification::Bitwise) => AstClassification::Mixed,
                 // const * linear = linear
-                AstClassification::Linear { is_variable } => AstClassification::Linear { is_variable: false },
+                Some(AstClassification::Linear { .. }) => AstClassification::Linear { is_variable: false },
                 // const * nonlinear = nonlinear
-                AstClassification::Nonlinear => AstClassification::Nonlinear,
+                Some(AstClassification::Nonlinear) => AstClassification::Nonlinear,
                 // const * mixed(bitwise and arithmetic) = mixed
-                AstClassification::Mixed => AstClassification::Mixed,
+                Some(AstClassification::Mixed) => AstClassification::Mixed,
+                // If neither operand is a constant then the expression is not linear.
+                None => AstClassification::Nonlinear,
             };
 
             return Some((result, None));
@@ -220,10 +153,10 @@ fn classify(
         Expr::Add([a, b]) => {
             // Adding any operand (A) to any non linear operand (B) is always non linear.
             let children = [op(a)?, op(b)?];
-            if children.into_iter().any(|x| match x {
-                AstClassification::Nonlinear => true,
-                _ => false,
-            }) {
+            if children
+                .into_iter()
+                .any(|x| matches!(x, AstClassification::Nonlinear))
+            {
                 return Some((AstClassification::Nonlinear, None));
             };
 
@@ -231,11 +164,10 @@ fn classify(
             // This leaves potentially constant, linear, bitwise, and mixed expressions left.
             // So now we check if either operand is mixed(bitwise + arithmetic) or bitwise.
             // In both cases, adding anything to a mixed or bitwise expression will be considered a mixed expression.
-            if children.into_iter().any(|x| match x {
-                AstClassification::Mixed => true,
-                AstClassification::Bitwise => true,
-                _ => false,
-            }) {
+            if children
+                .into_iter()
+                .any(|x| matches!(x, AstClassification::Mixed | AstClassification::Bitwise))
+            {
                 return Some((AstClassification::Mixed, None));
             };
 
@@ -243,7 +175,7 @@ fn classify(
             // If any child is linear then we consider this to be a linear arithmetic expression.
             // Note that constant folding has already eliminated addition of constants.
             if children.into_iter().any(|x| match x {
-                AstClassification::Linear { is_variable } => true,
+                AstClassification::Linear { .. } => true,
                 AstClassification::Bitwise => false,
                 _ => false,
             }) {
@@ -256,192 +188,97 @@ fn classify(
             };
 
             // This should never happen?
-            panic!()
+            unreachable!()
         }
-        Expr::Neg([a]) => {
-            let result = classify_bitwise(egraph, op(a)?, None);
-            result
-        }
-        Expr::And([a, b]) => classify_bitwise(egraph, op(a)?, Some(op(b)?)),
-        Expr::Or([a, b]) => {
-            /*
-            println!("here comes an OR!");
-            print(egraph, enode);
-
-            let a = op(a)?;
-            println!("Classification of a: {:#?}", a);
-
-            let b = op(b)?;
-            println!("Classification of b: {:#?}", b);
-
-            let result = classify_bitwise(egraph, a, Some(b));
-            println!("Classification of or^: {:#?}", result);
-            result
-            */
-            classify_bitwise(egraph, op(a)?, Some(op(b)?))
-        }
-        Expr::Xor([a, b]) => classify_bitwise(egraph, op(a)?, Some(op(b)?)),
+        Expr::Neg([a]) => classify_bitwise(op(a)?, None),
+        Expr::And([a, b]) => classify_bitwise(op(a)?, Some(op(b)?)),
+        Expr::Or([a, b]) => classify_bitwise(op(a)?, Some(op(b)?)),
+        Expr::Xor([a, b]) => classify_bitwise(op(a)?, Some(op(b)?)),
     };
 
-    return Some((result, None));
+    Some((result, None))
 }
 
-fn classify_bitwise(
-    egraph: &EEGraph,
-    a: AstClassification,
-    b: Option<AstClassification>,
-) -> AstClassification {
+fn classify_bitwise(a: AstClassification, b: Option<AstClassification>) -> AstClassification {
     // TODO: Throw if we see negation with a constant, that should be fixed.
-
-    let mut maybe_b: AstClassification = a;
-
-    /*
-    let mut children = if b.is_some() {
-        maybe_b = b.unwrap().clone();
-        [a, maybe_b]
-    } else {
-        [a]
-    };
-    */
-
-    let mut childrens = if b.is_some() {
-        maybe_b = b.unwrap().clone();
+    let children = if let Some(maybe_b) = b {
         vec![a, maybe_b]
     } else {
         vec![a]
     };
 
-    let mut children = childrens;
-    //println!("child count: {}", children.len());
-
     // Check if the expression contains constants or arithmetic expressions.
-    let containsConstantOrArithmetic = children.iter().any(|x| match x {
-        AstClassification::Constant { value } => true,
+    let contains_constant_or_arithmetic = children.iter().any(|x| match x {
+        AstClassification::Constant { .. } => true,
         // We only want to match linear arithmetic expressions - variables are excluded here.
-        AstClassification::Linear { is_variable } => {
-            if *is_variable {
-                false
-            } else {
-                true
-            }
-        }
+        AstClassification::Linear { is_variable } => !*is_variable,
         _ => false,
     });
 
     // Check if the expression contains constants or arithmetic expressions.
-    let containsMixedOrNonLinear = children.iter().any(|x| match x {
-        AstClassification::Mixed => true,
-        AstClassification::Nonlinear => true,
-        _ => false,
-    });
+    let contains_mixed_or_non_linear = children
+        .iter()
+        .any(|x| matches!(x, AstClassification::Mixed | AstClassification::Nonlinear));
 
     // Bitwise expressions are considered to be nonlinear if they contain constants,
     // arithmetic(linear) expressions, or non linear subexpressions.
-    if containsConstantOrArithmetic || containsMixedOrNonLinear {
+    if contains_constant_or_arithmetic || contains_mixed_or_non_linear {
         return AstClassification::Nonlinear;
     } else if children.iter().any(|x: &AstClassification| match x {
-        AstClassification::Linear { is_variable } => {
-            if *is_variable {
-                false
-            } else {
-                true
-            }
-        }
+        AstClassification::Linear { is_variable } => !*is_variable,
         AstClassification::Mixed => true,
         _ => false,
     }) {
         return AstClassification::Mixed;
-    };
-
-    // If none of the children are nonlinear or arithmetic then this is a pure bitwise expression.
-    /*
-    println!(
-        "{} {}",
-        containsConstantOrArithmetic, containsMixedOrNonLinear
-    );
-    */
-
-    for child in children {
-        //println!("children: {:#?}", child);
     }
 
-    //panic!("oh no!");
-    return AstClassification::Bitwise;
+    // If none of the children are nonlinear or arithmetic then this is a pure
+    // bitwise expression.
+    AstClassification::Bitwise
 }
 
 // If either one of the children is a constant, return the other one.
 fn get_non_constant_child_classification(
     a: AstClassification,
     b: AstClassification,
-) -> Option<(AstClassification)> {
-    let mut constChild: Option<AstClassification> = None;
-    let mut otherChild: Option<AstClassification> = None;
-    match a {
-        AstClassification::Constant { value } => {
-            constChild = Some(a);
-        }
-        _ => {
-            otherChild = Some(a);
-        }
+) -> Option<AstClassification> {
+    let mut const_child: Option<AstClassification> = None;
+    let mut other_child: Option<AstClassification> = None;
+    if matches!(a, AstClassification::Constant { .. }) {
+        const_child = Some(a);
+    } else {
+        other_child = Some(a);
     }
 
-    match b {
-        AstClassification::Constant { value } => {
-            constChild = Some(b);
-        }
-        _ => {
-            otherChild = Some(b);
-        }
+    if matches!(b, AstClassification::Constant { .. }) {
+        const_child = Some(b);
+    } else {
+        other_child = Some(b);
     }
 
-    if constChild.is_none() {
-        return None;
-    }
+    const_child?;
 
-    return Some(otherChild.unwrap());
-}
-
-fn get_expr_pattern_ast(enode: &Expr) -> PatternAst<Expr> {
-    return format!("{}", 0).parse().unwrap();
-}
-
-fn get_classification_cost(kind: AstClassification) -> Cost {
-    match kind {
-        AstClassification::Constant { value } => 10,
-        AstClassification::Linear { is_variable } => {
-            if is_variable {
-                10
-            } else {
-                100
-            }
-        }
-        AstClassification::Bitwise => 125,
-        AstClassification::Mixed => 150,
-        AstClassification::Nonlinear => 300,
-        AstClassification::Unknown => panic!("Hopefully this never happens?"),
-    }
+    other_child
 }
 
 fn get_cost(egraph: &EEGraph, enode: &Expr) -> Cost {
-    // TODO: Remove clone
-    let op = |i: &Id| egraph[*i].data.clone().unwrap().2;
+    let cost = |i: &Id| egraph[*i].data.as_ref().unwrap().2;
     match enode {
-        Expr::Add([a, b]) => op(a) + op(b),
-        Expr::Mul([a, b]) => op(a) + op(b),
-        Expr::Pow([a, b]) => op(a) + op(b),
-        Expr::And([a, b]) => op(a) + op(b),
-        Expr::Or([a, b]) => op(a) + op(b),
-        Expr::Xor([a, b]) => op(a) + op(b),
-        Expr::Neg([a]) => op(a),
-        Expr::Constant(_) => 1,
-        Expr::Symbol(_) => 1,
+        Expr::Add([a, b])
+        | Expr::Mul([a, b])
+        | Expr::Pow([a, b])
+        | Expr::And([a, b])
+        | Expr::Or([a, b])
+        | Expr::Xor([a, b]) => cost(a) + cost(b) + 1,
+        Expr::Neg([a]) => cost(a) + 1,
+        Expr::Constant(_) | Expr::Symbol(_) => 1,
     }
 }
 
 fn print(egraph: &EEGraph, expr: &Expr) {
-    let cost_func = EGraphCostFn { egraph: egraph };
+    let cost_func = EGraphCostFn { egraph };
 
-    let extractor = Extractor::new(&egraph, cost_func);
+    let extractor = Extractor::new(egraph, cost_func);
 
     match expr {
         Expr::Add([a, b]) => {
@@ -500,153 +337,82 @@ impl Analysis<Expr> for ConstantFold {
     type Data = Option<(AstClassification, Option<PatternAst<Expr>>, Cost)>;
 
     fn make(egraph: &EEGraph, enode: &Expr) -> Self::Data {
-        // Classify the expression. Then throw if it doesn't have a classification - that should never happen.
-        let maybe_classification = classify(egraph, enode);
-        if (maybe_classification.is_none()) {
-            panic!("Classifications cannot be none!");
-        }
+        let classification = classify(egraph, enode).unwrap();
 
-        let mut cost = get_cost(egraph, enode);
+        let cost = get_cost(egraph, enode);
 
-        // If we classified the AST and returned a new PatternAst<Expr>, that means constant
-        // folding succeed. So now we return the newly detected classification and the pattern ast.
-        let classification = maybe_classification.unwrap();
-        if (classification.1.is_some()) {
+        // If we classified the AST and returned a new PatternAst<Expr>, that means
+        // constant folding succeeded. So now we return the newly detected
+        // classification and the pattern ast
+        if classification.1.is_some() {
             return Some((classification.0, classification.1, cost));
         }
 
-        let str = enode.to_string();
-        if (cost > 30000) {
+        if cost > 30000 {
             match classification.0 {
                 AstClassification::Unknown => panic!(),
-                AstClassification::Constant { value } => (),
-                AstClassification::Bitwise => {
-                    print!("bitwse subexpression: ");
-                    match enode {
-                        Expr::Add([a, b]) => print(egraph, enode),
-                        Expr::Mul(_) => print(egraph, enode),
-                        Expr::Pow(_) => print(egraph, enode),
-                        Expr::And(_) => print(egraph, enode),
-                        Expr::Or(_) => print(egraph, enode),
-                        Expr::Xor(_) => print(egraph, enode),
-                        Expr::Neg(_) => print(egraph, enode),
-                        Expr::Constant(_) => (),
-                        Expr::Symbol(_) => (),
-                    }
-                }
-                AstClassification::Linear { is_variable } => {
-                    print!("linear subexpression: ");
-                    match enode {
-                        Expr::Add([a, b]) => print(egraph, enode),
-                        Expr::Mul(_) => print(egraph, enode),
-                        Expr::Pow(_) => print(egraph, enode),
-                        Expr::And(_) => print(egraph, enode),
-                        Expr::Or(_) => print(egraph, enode),
-                        Expr::Xor(_) => print(egraph, enode),
-                        Expr::Neg(_) => print(egraph, enode),
-                        Expr::Constant(_) => (),
-                        Expr::Symbol(_) => (),
-                    }
-                }
-                AstClassification::Nonlinear => {
-                    //print!("nonlinear subexpression: ");
-                    /*
-                    match enode {
-                        Expr::Add([a, b]) => print(egraph, enode),
-                        Expr::Mul(_) => print(egraph, enode),
-                        Expr::Pow(_) => print(egraph, enode),
-                        Expr::And(_) => print(egraph, enode),
-                        Expr::Or(_) => print(egraph, enode),
-                        Expr::Xor(_) => print(egraph, enode),
-                        Expr::Neg(_) => print(egraph, enode),
-                        Expr::Constant(_) => (),
-                        Expr::Symbol(_) => (),
-                    }
-                    */
-                }
+                AstClassification::Constant { .. } => (),
+                AstClassification::Bitwise => match enode {
+                    Expr::Add(..)
+                    | Expr::Mul(_)
+                    | Expr::Pow(_)
+                    | Expr::And(_)
+                    | Expr::Or(_)
+                    | Expr::Xor(_)
+                    | Expr::Neg(_) => print(egraph, enode),
+                    Expr::Constant(_) | Expr::Symbol(_) => (),
+                },
+                AstClassification::Linear { .. } => match enode {
+                    Expr::Add(..)
+                    | Expr::Mul(_)
+                    | Expr::Pow(_)
+                    | Expr::And(_)
+                    | Expr::Or(_)
+                    | Expr::Xor(_)
+                    | Expr::Neg(_) => print(egraph, enode),
+                    Expr::Constant(_) | Expr::Symbol(_) => (),
+                },
+                AstClassification::Nonlinear => {}
                 AstClassification::Mixed => {
-                    print!("mixed subexpression: ");
                     match enode {
-                        Expr::Add([a, b]) => print(egraph, enode),
-                        Expr::Mul(_) => print(egraph, enode),
-                        Expr::Pow(_) => print(egraph, enode),
-                        Expr::And(_) => print(egraph, enode),
-                        Expr::Or(_) => print(egraph, enode),
-                        Expr::Xor(_) => print(egraph, enode),
-                        Expr::Neg(_) => print(egraph, enode),
-                        Expr::Constant(_) => (),
-                        Expr::Symbol(_) => (),
+                        Expr::Add(..)
+                        | Expr::Mul(_)
+                        | Expr::Pow(_)
+                        | Expr::And(_)
+                        | Expr::Or(_)
+                        | Expr::Xor(_)
+                        | Expr::Neg(_) => print(egraph, enode),
+                        Expr::Constant(_) | Expr::Symbol(_) => (),
                     }
 
-                    //let best = extractor.find_best(node)
                     match enode {
-                        Expr::Add([a, b]) => print(egraph, enode),
+                        Expr::Add(..) => print(egraph, enode),
                         Expr::Mul(_) => print(egraph, enode),
                         Expr::Pow(_) => print(egraph, enode),
                         Expr::And(_) => print(egraph, enode),
                         Expr::Or(_) => print(egraph, enode),
                         Expr::Xor(_) => print(egraph, enode),
                         Expr::Neg(_) => print(egraph, enode),
-                        Expr::Constant(_) => (),
-                        Expr::Symbol(_) => (),
+                        Expr::Constant(_) | Expr::Symbol(_) => (),
                     }
-                    //panic!();
                 }
             }
         }
 
-        // Otherwise we've classified the AST but there was no constant folding to be performed.
-        return Some((classification.0, classification.1, get_cost(egraph, enode)));
+        // Otherwise we've classified the AST but there was no constant folding
+        // to be performed.
+        Some((classification.0, classification.1, get_cost(egraph, enode)))
     }
 
-    fn merge(&mut self, maybeA: &mut Self::Data, maybeB: Self::Data) -> DidMerge {
-        /*
-        let mut a = maybeA.to_owned().unwrap();
-        let mut b = maybeB.to_owned().unwrap();
-
-        let classification_a_cost = get_classification_cost(a.0);
-        let classification_b_cost = get_classification_cost(b.0);
-
-        let mut changedA = false;
-        let mut changedB = false;
-        if (classification_a_cost > classification_b_cost) {
-            a.0 = b.0;
-            changedA = true;
-        } else if (classification_b_cost > classification_a_cost) {
-            b.0 = a.0;
-            changedB = true;
-        }
-        */
-
-        return merge_option(maybeA, maybeB, |maybeA, maybeB| DidMerge(false, false));
-
-        // TODO: Not sure how merging is supposed to work?
-        let mut did_merge = DidMerge(false, false);
-
-        return did_merge;
-        /*
-        merge_option(maybeA, maybeB, |maybeA, maybeB| {
-            //assert_eq!(a., b.0, "Merged non-equal constants");
-            //panic!("todo!");
-            DidMerge(false, false)
-        })
-        */
+    fn merge(&mut self, maybe_a: &mut Self::Data, maybe_b: Self::Data) -> DidMerge {
+        merge_option(maybe_a, maybe_b, |_, _| DidMerge(false, false))
     }
 
     fn modify(egraph: &mut EEGraph, id: Id) {
         // TODO: Call egraph.union_instanations when with_explanations_enabled is set?
-        if let Some(c) = egraph[id].data.clone() {
-            if let Some(new) = &c.1 {
-                /*
-                egraph.un(
-                    &c.1,
-                    &c.0.to_string().parse().unwrap(),
-                    &Default::default(),
-                    "analysis".to_string(),
-                );
-                */
-
-                let instantiation = egraph.add_instantiation(new, &Default::default());
+        if let Some(c) = &egraph[id].data {
+            if let Some(new) = c.1.clone() {
+                let instantiation = egraph.add_instantiation(&new, &Default::default());
                 egraph.union(id, instantiation);
             }
         }
@@ -656,14 +422,9 @@ impl Analysis<Expr> for ConstantFold {
 fn read_constant(
     data: &Option<(AstClassification, Option<PatternAst<Expr>>, Cost)>,
 ) -> Option<i64> {
-    if (data.is_none()) {
-        return None;
-    }
-
-    let classification = data.as_ref().unwrap().0;
-    match classification {
-        AstClassification::Constant { value } => return Some(value),
-        _ => return None,
+    match data.as_ref()?.0 {
+        AstClassification::Constant { value } => Some(value),
+        _ => None,
     }
 }
 
@@ -677,66 +438,27 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         egraph: &mut EEGraph,
         eclass: Id,
         subst: &Subst,
-        searcher_ast: Option<&PatternAst<Expr>>,
-        rule_name: Symbol,
+        _searcher_ast: Option<&PatternAst<Expr>>,
+        _rule_name: Symbol,
     ) -> Vec<Id> {
-        // println!("factors: {} {}", self.xFactor, self.yFactor);
-
         // Get the eclass, expression, and of the expressions relating to X.
         let x_id = subst["?x".parse().unwrap()];
 
-        /*
-        let x_factor_eclass = &egraph[subst[self.xFactor.parse().unwrap()]];
-        assert_eq!(x_factor_eclass.nodes.len(), 1);
-        let x_factor_expr = x_factor_eclass.nodes.first().unwrap();
-        let x_factor_constant: i64 = match x_factor_expr {
-            &Expr::Constant(def) => def,
-            _ => panic!("factor must be constant!"),
-        };
-        */
-
         let x_factor_data = &egraph[subst[self.x_factor.parse().unwrap()]].data;
-        let x_factor_constant: i64 = match read_constant(x_factor_data) {
-            Some(c) => c,
-            None => panic!("factor must be constant!"),
-        };
-
-        /*
-        // Get the eclass, expression, and of the expressions relating to Y.
-        let y_eclass = &egraph[subst["?y".parse().unwrap()]];
-        assert_eq!(y_eclass.nodes.len(), 1);
-        let y_id = y_eclass.id;
-        let y_factor_eclass = &egraph[subst[self.yFactor.parse().unwrap()]];
-        assert_eq!(y_factor_eclass.nodes.len(), 1);
-        let y_factor_expr = y_factor_eclass.nodes.first().unwrap();
-        let y_factor_constant: i64 = match y_factor_expr {
-            &Expr::Constant(def) => def,
-            _ => panic!("factor must be constant!"),
-        };
-        */
+        let x_factor_constant = read_constant(x_factor_data).unwrap();
 
         // Get the eclass, expression, and of the expressions relating to X.
         let y_id = subst["?y".parse().unwrap()];
 
-        /*
-        let x_factor_eclass = &egraph[subst[self.xFactor.parse().unwrap()]];
-        assert_eq!(x_factor_eclass.nodes.len(), 1);
-        let x_factor_expr = x_factor_eclass.nodes.first().unwrap();
-        let x_factor_constant: i64 = match x_factor_expr {
-            &Expr::Constant(def) => def,
-            _ => panic!("factor must be constant!"),
-        };
-        */
-
         let y_factor_data = &egraph[subst[self.y_factor.parse().unwrap()]].data;
-        let y_factor_constant: i64 = read_constant(y_factor_data).unwrap();
+        let y_factor_constant = read_constant(y_factor_data).unwrap();
 
         let min = x_factor_constant.min(y_factor_constant);
         let min_id = egraph.add(Expr::Constant(min));
         let max = x_factor_constant.max(y_factor_constant);
 
         // Here we're dealing with expressions like "4*x&4*y" and ""4*x&8*y",
-        // where xFactor and yFactor are the constant multipliers.
+        // where x_factor and y_factor are the constant multipliers.
         // If the constant multipliers are the same, then for example
         // we can factor `4*x&4*y` into `4*(x&y)`.
         let factored: Id = if min == max {
@@ -749,18 +471,16 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         // If the factors are not equal(e.g. "4*x&8*y"), then we need to factor
         // out only the minimum factor, giving us something like "4*(x&2*y)".
         else {
-            let remaining_factor = egraph.add(Expr::Constant((max / min)));
+            let remaining_factor = egraph.add(Expr::Constant(max / min));
 
             // If x has the large factor then the RHS becomes ((max/min) * x) & y;
             let rhs: Id = if x_factor_constant == max {
-                let x_times_remaining_factor = egraph.add(Expr::Mul(([remaining_factor, x_id])));
-                let anded = egraph.add(Expr::And(([x_times_remaining_factor, y_id])));
-                anded
+                let x_times_remaining_factor = egraph.add(Expr::Mul([remaining_factor, x_id]));
+                egraph.add(Expr::And([x_times_remaining_factor, y_id]))
             // If y has the large factor then the RHS becomes ((max/min) * y) & x;
             } else {
-                let y_times_remaining_factor = egraph.add(Expr::Mul(([remaining_factor, y_id])));
-                let anded = egraph.add(Expr::And(([y_times_remaining_factor, x_id])));
-                anded
+                let y_times_remaining_factor = egraph.add(Expr::Mul([remaining_factor, y_id]));
+                egraph.add(Expr::And([y_times_remaining_factor, x_id]))
             };
 
             // Create the final expression of (min * factored_rhs);
@@ -768,9 +488,9 @@ impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
         };
 
         if egraph.union(eclass, factored) {
-            return vec![factored];
+            vec![factored]
         } else {
-            return vec![];
+            vec![]
         }
     }
 }
@@ -781,28 +501,12 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         egraph: &mut EEGraph,
         eclass: Id,
         subst: &Subst,
-        searcher_ast: Option<&PatternAst<Expr>>,
-        rule_name: Symbol,
+        _searcher_ast: Option<&PatternAst<Expr>>,
+        _rule_name: Symbol,
     ) -> Vec<Id> {
         let new_const_expr = &egraph[subst[self.const_factor.parse().unwrap()]].data;
 
-        /*
-        let constExpr = &egraph[subst[self.constFactor.parse().unwrap()]]
-            .nodes
-            .last()
-            .unwrap();
-
-        let constFactor: i64 = match constExpr {
-            &&Expr::Constant(def) => def,
-            _ => panic!("factor must be constant!"),
-        };
-        */
-
-        let const_factor: i64 = read_constant(new_const_expr).unwrap();
-        let original = &egraph[eclass];
-        for pair in &original.nodes {
-            // println!("original: {}", pair);
-        }
+        let const_factor = read_constant(new_const_expr).unwrap();
 
         let x = subst[self.x_factor.parse().unwrap()];
 
@@ -810,39 +514,11 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
         let new_expr = egraph.add(Expr::Mul([new_const, x]));
 
         if egraph.union(eclass, new_expr) {
-            return vec![new_expr];
+            vec![new_expr]
         } else {
-            return vec![];
+            vec![]
         }
-
-        //let b = subst[self.xFactor.parse().unwrap()];
-        //let c = subst[self.constFactor.parse().unwrap()];
-        panic!();
-
-        println!(
-            "before factoring: ({} * {}) + {}",
-            const_factor, self.x_factor, self.x_factor
-        );
-
-        let factored = format!("(* {} {})", const_factor + 1, self.x_factor).replace("?", "");
-        println!("factored: {}", factored);
-        let parsed: RecExpr<Expr> = factored.parse().unwrap();
-        println!("parsed: {}", parsed);
-        println!("searcher ast: {}", searcher_ast.unwrap());
-        let res = egraph.add_expr(&parsed);
-
-        println!("equality: {} {}", res, eclass);
-        let mut results: Vec<Id> = vec![];
-        //egraph.union(eclass, res);
-        results.push(res);
-        results.push(eclass);
-        return results;
-        panic!("foobar!")
     }
-}
-
-fn var(s: &str) -> Symbol {
-    s.parse().unwrap()
 }
 
 fn make_rules() -> Vec<Rewrite> {
@@ -885,8 +561,8 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_duplicate_children
         rewrite!("expanded-add"; "(+ (* ?const ?x) ?x)" => {
             DuplicateChildrenMulAddApplier {
-                const_factor : "?const".to_owned(),
-                x_factor : "?x".to_owned(),
+                const_factor : "?const",
+                x_factor : "?x",
             }
         } if is_const("?const")),
         // ported rules:
@@ -906,8 +582,8 @@ fn make_rules() -> Vec<Rewrite> {
         // __check_bitwise_powers_of_two
         rewrite!("bitwise_powers_of_two: "; "(& (* ?factor1 ?x) (* ?factor2 ?y))" => { // not formally proved but most likely bug free
             BitwisePowerOfTwoFactorApplier {
-                x_factor : "?factor1".to_owned(),
-                y_factor : "?factor2".to_owned(),
+                x_factor : "?factor1",
+                y_factor : "?factor2",
             }
         } if (is_power_of_two("?factor1", "?factor2"))),
         // __check_beautify_constants_in_products: todo
@@ -1055,21 +731,14 @@ fn make_rules() -> Vec<Rewrite> {
 fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
 
-    move |egraph, _, subst| {
-        if let Some(c) = read_constant(&egraph[subst[var]].data) {
-            return true;
-        } else {
-            return false;
-        };
-    }
+    move |egraph, _, subst| read_constant(&egraph[subst[var]].data).is_some()
 }
 
-fn is_power_of_two(var: &str, var_to_str: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
+fn is_power_of_two(var: &str, var2: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
     let var = var.parse().unwrap();
-    let var2: Var = var_to_str.parse().unwrap();
+    let var2: Var = var2.parse().unwrap();
 
     move |egraph, _, subst| {
-        /* */
         let v1 = if let Some(c) = read_constant(&egraph[subst[var]].data) {
             c & (c - 1) == 0 && c != 0
         } else {
@@ -1082,103 +751,26 @@ fn is_power_of_two(var: &str, var_to_str: &str) -> impl Fn(&mut EEGraph, Id, &Su
             false
         };
 
-        // println!("{}", &egraph[subst[var2]].nodes.len());
-        let child = &egraph[subst[var]].nodes.first().unwrap();
-        let child2 = &egraph[subst[var2]].nodes.first().unwrap();
-
-        if let &&Expr::Constant(def) = child {
-            //  println!("this is a constant!");
-        } else {
-            //  println!("this is not a constant! {}", child)
-        }
-
-        //println!("factor1: {}\nfactor2: {}", child, child2);
-
-        //if let Some(c) = &egraph[subst[var2]] {
-        //      println!("Somasde: {}", c.0);
-        //  }
-
-        //println!("is power of two! {} {}", var, var2);
-        return v1 && v2;
-    }
-}
-
-fn print_recexpr(
-    egraph: &mut EEGraph,
-    expr: RecExpr<Expr>,
-    is_first: bool,
-    runner: &Extractor<'_, EGraphCostFn<'_>, Expr, ConstantFold>,
-) {
-    let nodes = expr.as_ref();
-    let last = nodes.last();
-    println!("{}", nodes.len());
-    visit_all(egraph, last.unwrap(), runner);
-    todo!()
-}
-
-fn visit_all(
-    egraph: &mut EEGraph,
-    expr: &Expr,
-    runner: &Extractor<'_, EGraphCostFn<'_>, Expr, ConstantFold>,
-) {
-    let added = egraph.add(expr.clone());
-    let classification = egraph[added].data.as_ref().unwrap().0;
-    println!("{:#?}: {}", classification, expr);
-
-    let mut x = |id: &Id| print_recexpr(egraph, runner.find_best(*id).1, true, runner);
-    match expr {
-        Expr::Add([a, b]) => {
-            x(a);
-            x(b)
-        }
-        Expr::Mul([a, b]) => {
-            x(a);
-            x(b)
-        }
-        Expr::Pow([a, b]) => {
-            x(a);
-            x(b)
-        }
-        Expr::And([a, b]) => {
-            x(a);
-            x(b)
-        }
-        Expr::Or([a, b]) => {
-            x(a);
-            x(b)
-        }
-        Expr::Xor([a, b]) => {
-            x(a);
-            x(b)
-        }
-        Expr::Neg([a]) => {
-            x(a);
-        }
-        Expr::Constant(def) => {}
-        Expr::Symbol(_) => {}
+        v1 && v2
     }
 }
 
 /// parse an expression, simplify it using egg, and pretty print it back out
 fn simplify(s: &str, optimize_for_linearity: bool) -> String {
-    // parse the expression, the type annotation tells it which Language to use
     let expr: RecExpr<Expr> = s.parse().unwrap();
 
     // Create the runner. You can enable explain_equivalence to explain the equivalence,
     // but it comes at a severe performance penalty.
     let explain_equivalence = false;
-    let mut runner: Runner<Expr, ConstantFold> = if !explain_equivalence {
-        Runner::default()
-            .with_time_limit(Duration::from_millis(5000))
-            .with_expr(&expr)
-    } else {
-        Runner::default()
-            .with_explanations_enabled()
-            .with_expr(&expr)
-    };
+    let mut runner: Runner<Expr, ConstantFold> = Runner::default()
+        .with_time_limit(Duration::from_millis(5000))
+        .with_expr(&expr);
+
+    if explain_equivalence {
+        runner = runner.with_explanations_enabled();
+    }
 
     let rules = make_rules();
-    println!("made rules");
 
     let start = Instant::now();
     runner = runner.run(&rules);
@@ -1186,55 +778,28 @@ fn simplify(s: &str, optimize_for_linearity: bool) -> String {
     // the Runner knows which e-class the expression given with `with_expr` is in
     let root = runner.roots[0];
 
-    if optimize_for_linearity {
-        // use an Extractor to pick the best element of the root eclass
+    // use an Extractor to pick the best element of the root eclass
+    let (best_cost, best) = if optimize_for_linearity {
         let cost_func = EGraphCostFn {
             egraph: &runner.egraph,
         };
 
         let extractor = Extractor::new(&runner.egraph, cost_func);
-        let (best_cost, best) = extractor.find_best(root);
-        let classification = &runner.egraph[root].data.clone().unwrap().0;
-
-        let duration = start.elapsed();
-        println!("Time elapsed in simplify() is: {:?}", duration);
-
-        println!(
-            "Simplified {} \n\nto:\n{}\n with cost {}\n\n",
-            expr, best, best_cost
-        );
-
-        dbg!(classification);
-
-        //print_recexpr(&mut runner.egraph, best.clone(), true, &extractor);
-
-        best.to_string()
+        extractor.find_best(root)
     } else {
-        // use an Extractor to pick the best element of the root eclass
-        let cost_func = AstSize;
-
         let extractor = Extractor::new(&runner.egraph, AstSize);
-        let (best_cost, best) = extractor.find_best(root);
-        let classification = &runner.egraph[root].data.clone().unwrap().0;
+        extractor.find_best(root)
+    };
 
-        let duration = start.elapsed();
-        println!("Time elapsed in simplify() is: {:?}", duration);
+    let duration = start.elapsed();
+    println!("Time elapsed in simplify() is: {:?}", duration);
 
-        println!("Simplified {} to {} with cost {}", expr, best, best_cost);
+    println!(
+        "Simplified {} \n\nto:\n{}\n with cost {}\n\n",
+        expr, best, best_cost
+    );
 
-        dbg!(classification);
-
-        best.to_string()
-    }
-
-    /*
-    if explain_equivalence {
-        println!(
-            "explained: {}",
-            runner.explain_equivalence(&expr, &best).get_flat_string()
-        );
-    }
-    */
+    best.to_string()
 }
 
 struct EGraphCostFn<'a> {
@@ -1243,11 +808,11 @@ struct EGraphCostFn<'a> {
 
 impl<'a> CostFunction<Expr> for EGraphCostFn<'a> {
     type Cost = usize;
-    fn cost<C>(&mut self, enode: &Expr, mut costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &Expr, _costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {
-        return get_cost(self.egraph, enode) as usize;
+        get_cost(self.egraph, enode) as usize
     }
 }
 
@@ -1259,9 +824,8 @@ fn main() {
     args.next();
 
     // Read the optional expression to simplify.
-    let next = args.next();
-    let expr = if next.is_some() {
-        next.unwrap()
+    let expr = if let Some(next) = args.next() {
+        next
     } else {
         "(+ (+ (+ (* (+ y (^ y (~ x))) (+ (* (| y x) (* x (* (* y x) (* y -4963545269917450240)))) (* (* x 1053768439367204864) (* y (& x (~ y)))))) (* (^ y (~ x)) (* (^ y (~ x)) (* (^ y x) 6500170837692252160)))) (+ (+ (+ (+ (* (& x (~ y)) (+ (* (^ y (~ x)) (* (^ y (~ x)) -1242936803585949696)) (* 1242936803585949696 (* (& y x) (& x (~ y)))))) (+ (* (* (^ y x) (& y x)) (+ (* (^ y x) (+ (* (| y x) 156381889551138816) (* -1 (* (* y x) 4494399601264033792)))) (+ (* (* y y) (* -1 8701149918271635456)) (* (* y x) (* (* y x) 2481772634958725120))))) (+ (* -1 (+ (* (^ y (~ x)) (* (| y x) (* (^ y (~ x)) (* (| y x) 6049732328593293312)))) (* 6347279416522964992 (* (| y x) (* (* (& y x) (| y x)) (+ y (^ y (~ x)))))))) (+ (* (* (^ y x) (^ y x)) (+ (* (^ y x) 9197308388596252672) (* (* y x) 4494399601264033792))) (+ (* (| y x) (* x (* (* y x) (* y -4963545269917450240)))) (* (+ (* (& x (~ y)) 1242936803585949696) (* y 414312267861983232)) (* y (* y -1)))))))) (+ (+ (+ 7477701790215481006 (* (^ y x) (* (^ y x) 2647290229186101248))) (+ (+ (* (| y x) (* (+ (& x (~ y)) (+ (^ y (~ x)) (* (& y x) -1))) (* y 7553939277059457024))) (* (* (* y y) (* 
             x 7029109185614708736)) (* (+ (& x (~ y)) (* (& y x) -1)) (* x (^ y (~ x)))))) (+ (+ (* 8701149918271635456 (* (& x (~ y)) (* y (* (^ y x) (& x (~ y)))))) (* (+ (* 579243341355417600 (* y y)) (* (& y x) (* (^ y x) 1044444237166280704))) (* y (+ (& x (~ y)) (^ y (~ x)))))) (+ (* -1 (+ (* y (+ (* (* x 1053768439367204864) (* y (& y x))) (* x (* x (* y 7878655039613435904))))) (+ 
@@ -1280,14 +844,55 @@ fn main() {
     let mut simplified = simplify(expr.as_str(), true);
 
     for i in 0..10 {
-        if i % 2 == 0 {
-            simplified = simplify(simplified.clone().as_ref(), true);
-        } else {
-            simplified = simplify(simplified.clone().as_ref(), false);
-        }
+        simplified = simplify(&simplified, i % 2 == 0);
     }
 
-    simplified = simplify(simplified.clone().as_ref(), false);
-    simplified = simplify(simplified.clone().as_ref(), false);
+    simplified = simplify(&simplified, false);
+    simplified = simplify(&simplified, false);
     println!("{}", simplified);
+}
+
+#[cfg(test)]
+mod test {
+    use crate::simplify;
+
+    macro_rules! validate_output {
+        ($input:expr, $output:expr) => {
+            assert_eq!(simplify($input, true), $output)
+        };
+    }
+
+    #[test]
+    fn basic_arith_const_prop() {
+        validate_output!("(+ 1 2)", "3");
+        validate_output!("(* 1 2)", "2");
+        validate_output!("(** 1 2)", "1");
+    }
+
+    #[test]
+    fn basic_arith_const_prop_with_negative() {
+        validate_output!("(+ -1 -2)", "-3");
+        validate_output!("(* -1 2)", "-2");
+        validate_output!("(** -1 3)", "-1");
+    }
+
+    #[test]
+    fn basic_bitwise_const_prop() {
+        validate_output!("(& 1 2)", "0");
+        validate_output!("(| 1 2)", "3");
+        validate_output!("(^ 1 2)", "3");
+        validate_output!("(~ 1)", "-2");
+    }
+
+    #[test]
+    fn already_simplified() {
+        validate_output!("(+ ?a 1)", "(+ ?a 1)");
+        validate_output!("(~ ?a)", "(~ ?a)");
+    }
+
+    #[test]
+    fn simplifies_double_negation() {
+        validate_output!("(* (* ?a -1) -1)", "?a");
+        validate_output!("(~ (~ ?a))", "?a");
+    }
 }
