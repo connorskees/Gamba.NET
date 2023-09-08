@@ -7,8 +7,6 @@ type Cost = i64;
 pub type EEGraph = egg::EGraph<Expr, ConstantFold>;
 pub type Rewrite = egg::Rewrite<Expr, ConstantFold>;
 
-//pub type Constant = i64;
-
 define_language! {
     pub enum Expr {
         // arithmetic operations
@@ -31,13 +29,20 @@ define_language! {
 struct BitwiseAnalysis;
 
 #[derive(Debug)]
-pub struct BitwisePowerOfTwoFactorApplier {
+struct BitwisePowerOfTwoFactorApplier {
     x_factor: &'static str,
     y_factor: &'static str,
 }
 
 #[derive(Debug)]
-pub struct DuplicateChildrenMulAddApplier {
+pub struct RewritePowerApplier {
+    a: Var,
+    b: Var,
+    exponent: Var,
+}
+
+#[derive(Debug)]
+struct DuplicateChildrenMulAddApplier {
     const_factor: &'static str,
     x_factor: &'static str,
 }
@@ -264,12 +269,10 @@ fn get_non_constant_child_classification(
 fn get_cost(egraph: &EEGraph, enode: &Expr) -> Cost {
     let cost = |i: &Id| egraph[*i].data.as_ref().unwrap().2;
     match enode {
-        Expr::Add([a, b])
-        | Expr::Mul([a, b])
-        | Expr::Pow([a, b])
-        | Expr::And([a, b])
-        | Expr::Or([a, b])
-        | Expr::Xor([a, b]) => cost(a) + cost(b) + 1,
+        Expr::Add([a, b]) | Expr::Mul([a, b]) => cost(a) + cost(b),
+        Expr::Pow([a, b]) | Expr::And([a, b]) | Expr::Or([a, b]) | Expr::Xor([a, b]) => {
+            cost(a) + cost(b) + 1
+        }
         Expr::Neg([a]) => cost(a) + 1,
         Expr::Constant(_) | Expr::Symbol(_) => 1,
     }
@@ -428,8 +431,8 @@ fn read_constant(
     }
 }
 
-// Given an AND, XOR, or OR, of `2*x&2*y`, where a power of two can be factored out of it's children,
-// transform it into `2*(x&y)`.
+// Given an AND, XOR, or OR, of `2*x&2*y`, where a power of two can be factored
+// out of its children, transform it into `2*(x&y)`.
 // TODO: As of right now this transform only works if the constant multiplier is a power of 2,
 // but it should work if any power of two can be factored out of the immediate multipliers.
 impl Applier<Expr, ConstantFold> for BitwisePowerOfTwoFactorApplier {
@@ -521,6 +524,43 @@ impl Applier<Expr, ConstantFold> for DuplicateChildrenMulAddApplier {
     }
 }
 
+impl Applier<Expr, ConstantFold> for RewritePowerApplier {
+    fn apply_one(
+        &self,
+        egraph: &mut EEGraph,
+        eclass: Id,
+        subst: &Subst,
+        _searcher_ast: Option<&PatternAst<Expr>>,
+        _rule_name: Symbol,
+    ) -> Vec<Id> {
+        let exponent_id = subst[self.exponent];
+        let exponent_data = &egraph[exponent_id].data;
+        let exponent_constant = read_constant(exponent_data).unwrap();
+
+        let a_id = subst[self.a];
+        let a_data = &egraph[a_id].data;
+        let a_constant = read_constant(a_data).unwrap();
+
+        let b_id = subst[self.b];
+
+        let const_value = if let Ok(exponent_constant) = u32::try_from(exponent_constant) {
+            a_constant.pow(exponent_constant)
+        } else {
+            return Vec::new();
+        };
+
+        let const_id = egraph.add(Expr::Constant(const_value));
+        let id = egraph.add(Expr::Pow([b_id, exponent_id]));
+        let new_expr = egraph.add(Expr::Mul([id, const_id]));
+
+        if egraph.union(eclass, new_expr) {
+            vec![new_expr]
+        } else {
+            vec![]
+        }
+    }
+}
+
 fn make_rules() -> Vec<Rewrite> {
     vec![
         // Or rules
@@ -554,7 +594,7 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("mul-one"; "(* ?a 1)" => "?a"),
         rewrite!("mul-commutativity"; "(* ?a ?b)" => "(* ?b ?a)"), // formally proved
         rewrite!("mul-associativity"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"), // formally proved
-        rewrite!("mul-distributivity-expand"; "(* ?a (+ ?b ?c))" => "(+ (* ?a ?b) (* ?a ?c))"), // formally proved
+        rewrite!("mul-distributivity-expand-add"; "(* ?a (+ ?b ?c))" => "(+ (* ?a ?b) (* ?a ?c))"), // formally proved
         // Power rules
         rewrite!("power-zero"; "(** ?a 0)" => "1"),
         rewrite!("power-one"; "(** ?a 1)" => "?a"),
@@ -567,8 +607,8 @@ fn make_rules() -> Vec<Rewrite> {
         } if is_const("?const")),
         // ported rules:
         // __eliminate_nested_negations_advanced
-        rewrite!("minus-twice"; "(* (* ?a -1) -1))" => "(?a)"), // formally proved
-        rewrite!("negate-twice"; "(~ (~ ?a))" => "(?a)"),       // formally proved
+        rewrite!("minus-twice"; "(* (* ?a -1) -1))" => "?a"), // formally proved
+        rewrite!("negate-twice"; "(~ (~ ?a))" => "?a"),       // formally proved
         // __check_bitwise_negations
         // bitwise -> arith
         rewrite!("add-bitwise-negation"; "(+ (~ ?a) ?b)" => "(+ (+ (* ?a -1) -1) ?b)"), // formally proven
@@ -593,13 +633,19 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("xor-move-bitwise-negation-in"; "(~ (^ (~ ?a) ?b))" => "(^ ?a ?b)"), // formally proved
         // __check_bitwise_negations_in_excl_disjunctions
         rewrite!("xor-flip-negations"; "(^ (~ ?a) (~ ?b))" => "(^ ?a ?b)"), // formally proved
-        // __check_rewrite_powers: todo
+        // __check_rewrite_powers
+        rewrite!("extract-constant-factor-from-power"; "(** (* ?a ?b) ?exponent)" => {
+            RewritePowerApplier {
+                a: "?a".parse().unwrap(),
+                b: "?b".parse().unwrap(),
+                exponent: "?exponent".parse().unwrap(),
+            }
+        } if (can_rewrite_power("?a", "?exponent"))),
         // __check_resolve_product_of_powers
         // note: they say "Moreover merge factors that occur multiple times",
         // but I'm not sure what they mean
         rewrite!("merge-power-same-base"; "(* (** ?a ?b) (** ?a ?c))" => "(** ?a (+ ?b ?c))"),
-        // __check_resolve_product_of_constant_and_sum
-        //rewrite!("distribute-constant-to-sum"; "(* (+ ?a ?b) Constant)" => "(+ (* ?a Constant) (* ?b Constant))"),
+        // __check_resolve_product_of_constant_and_sum: implemented above
         // __check_factor_out_of_sum
         rewrite!("factor"; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"), // formally proved
         // __check_resolve_inverse_negations_in_sum
@@ -609,7 +655,11 @@ fn make_rules() -> Vec<Rewrite> {
         // __insert_fixed_in_conj: todo
         // __insert_fixed_in_disj: todo
         // __check_trivial_xor: implemented above
-        // __check_xor_same_mult_by_minus_one: todo
+        // __check_xor_same_mult_by_minus_one
+        // "2*(x|-x) == x^-x"
+        rewrite!("xor_same_mult_by_minus_one_1"; "(* (| ?a (* ?a -1)) 2)" => "(^ ?a (* ?a -1))"),
+        // "-2*(x&-x) == x^-x"
+        rewrite!("xor_same_mult_by_minus_one_2"; "(* (& ?a (* ?a -1)) -2)" => "(^ ?a (* ?a -1))"),
         // __check_conj_zero_rule
         // x&-x&2*x
         rewrite!("conj_zero_rule"; "(& ?a (& (* ?a -1) (* ?a 2)))" => "0"), // formally proved
@@ -674,11 +724,9 @@ fn make_rules() -> Vec<Rewrite> {
         // x|(x|y)-y
         rewrite!("disj_sub_disj_identity_rule_1"; "(| ?x (+ (| ?x ?y) (* ?y -1)))" => "?x"), // formally proved
         // __check_disj_sub_disj_identity_rule
-        // todo: see above
         // x|x-(x&y)
         rewrite!("disj_sub_disj_identity_rule_2"; "(| ?x (+ ?x (* (& ?x ?y) -1)))" => "?x"), // formally proved
         // __check_conj_add_conj_identity_rule
-        // todo: see above
         // x&x+(~x&y)
         rewrite!("conj_add_conj_identity_rule"; "(& ?x (+ ?x (& (~ ?x) ?y)))" => "?x"), // formally proved
         // __check_disj_disj_conj_rule
@@ -691,16 +739,16 @@ fn make_rules() -> Vec<Rewrite> {
         // -(-x|x&y&z)|x&y
         rewrite!("disj_disj_conj_rule_2"; "(| (* (| (* ?x -1) (& (& ?x ?y) ?z)) -1) (& ?x ?y))" => "?x"),
         // Additional rules:
-        rewrite!("mba-1"; "(+ ?d (* (* 1 -1) (& ?d ?a)))" => "(& (~ ?a) ?d)"),
-        rewrite!("mba-2"; "(+ (* (* 1 -1) (& ?d ?a)) ?d)" => "(& (~ ?a) ?d)"),
+        rewrite!("mba-1"; "(+ ?d (* -1 (& ?d ?a)))" => "(& (~ ?a) ?d)"),
+        rewrite!("mba-2"; "(+ (* -1 (& ?d ?a)) ?d)" => "(& (~ ?a) ?d)"),
         rewrite!("mba-3"; "(+ (+ ?a (* 2 -1)) (* (* 2 -1) ?d))" => "(+ (+ (* 2 -1) ?a) (* (* 2 ?d) -1))"),
-        rewrite!("mba-4"; "(+ (| ?d ?a) (* (* 1 -1) (& ?a (~ ?d))))" => "?d"),
-        rewrite!("mba-5"; "(+ (* (* 1 -1) (& ?a (~ ?d))) (| ?d ?a))" => "?d"),
+        rewrite!("mba-4"; "(+ (| ?d ?a) (* -1 (& ?a (~ ?d))))" => "?d"),
+        rewrite!("mba-5"; "(+ (* -1 (& ?a (~ ?d))) (| ?d ?a))" => "?d"),
         rewrite!("mba-6"; "(+ (& ?d ?a) (& ?a (~ ?d)))" => "?a"),
         rewrite!("mba-7"; "(+ (& ?a (~ ?d)) (& ?d ?a))" => "?a"),
         rewrite!("mba-8"; "(+ (* (& ?d (* ?a ?d)) (| ?d (* ?a ?d))) (* (& (~ ?d) (* ?a ?d)) (& ?d (~ (* ?a ?d)))))" => "(* (** ?d 2) ?a)"),
         rewrite!("mba-9"; "(+ (+ ?a (* -2 ?d)) (* 2 (& (~ ?a) (* 2 ?d))))" => "(^ ?a (* 2 ?d))"),
-        rewrite!("mba-10"; "(~ (* ?x ?y))" => "(+ (* (~ ?x) ?y) (+ ?y (* 1 -1)))"),
+        rewrite!("mba-10"; "(~ (* ?x ?y))" => "(+ (* (~ ?x) ?y) (+ ?y -1))"),
         rewrite!("mba-11"; "(~ (+ ?x ?y))" => "(+ (~ ?x) (+ (~ ?y) 1))"),
         rewrite!("mba-12"; "(~ (+ ?x (* ?y -1)))" => "(+ (~ ?x) (* (+ (~ ?y) 1) -1))"),
         rewrite!("mba-13"; "(~ (& ?x ?y))" => "(| (~ ?x) (~ ?y))"),
@@ -723,9 +771,27 @@ fn make_rules() -> Vec<Rewrite> {
         rewrite!("mba-30"; "(~ (& ?a21 (~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))))))" => "(| (~ ?a21) (^ ?a46 ?a48))"),
         rewrite!("mba-31"; "(& (~ ?a48) (~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46))))))" => "(~ (| ?a48 (^ ?a21 ?a46)))"),
         rewrite!("mba-32"; "(~ (& (~ ?a48) (~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46)))))))" => "(| ?a48 (^ ?a21 ?a46))"),
-        rewrite!("mba-33"; "(+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46))))" => "(+ (* 2 -1) (* (* 1 -1) (^ ?a21 (^ ?a46 ?a48))))"),
+        rewrite!("mba-33"; "(+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46))))" => "(+ (* 2 -1) (* -1 (^ ?a21 (^ ?a46 ?a48))))"),
         rewrite!("mba-34"; "(+ (^ ?a48 (^ ?a21 ?a46)) (+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46)))))" => "(* 2 -1)"),
     ]
+}
+
+fn can_rewrite_power(
+    a: &'static str,
+    exponent: &'static str,
+) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
+    let a = a.parse().unwrap();
+    let b = "?b".parse().unwrap();
+    let exponent = exponent.parse().unwrap();
+
+    move |egraph, _, subst| {
+        let a = &egraph[subst[a]].data;
+        let b = &egraph[subst[b]].data;
+        let exponent = &egraph[subst[exponent]].data;
+        read_constant(a).is_some()
+            && read_constant(b).is_none()
+            && read_constant(exponent).is_some()
+    }
 }
 
 fn is_const(var: &str) -> impl Fn(&mut EEGraph, Id, &Subst) -> bool {
@@ -858,7 +924,7 @@ mod test {
 
     macro_rules! validate_output {
         ($input:expr, $output:expr) => {
-            assert_eq!(simplify($input, true), $output)
+            assert_eq!(simplify($input, false), $output)
         };
     }
 
@@ -888,11 +954,26 @@ mod test {
     fn already_simplified() {
         validate_output!("(+ ?a 1)", "(+ ?a 1)");
         validate_output!("(~ ?a)", "(~ ?a)");
+        validate_output!("?a", "?a");
+        validate_output!("5", "5");
     }
 
     #[test]
     fn simplifies_double_negation() {
         validate_output!("(* (* ?a -1) -1)", "?a");
         validate_output!("(~ (~ ?a))", "?a");
+    }
+
+    #[test]
+    fn adding_same_value_is_multiplication() {
+        validate_output!("(+ ?a (+ ?a ?a))", "(* ?a 3)");
+    }
+
+    #[test]
+    fn extracts_constant_from_pow() {
+        validate_output!("(** (* ?a 2) 2)", "(* 4 (** ?a 2))");
+        validate_output!("(** (* 2 ?a) 2)", "(* 4 (** ?a 2))");
+        validate_output!("(* (** (* ?a 2) 2) 2)", "(* (** ?a 2) 8)");
+        validate_output!("(* (* ?a 2) (* ?a 2))", "(* (* ?a ?a) 4)");
     }
 }
