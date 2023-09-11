@@ -1,0 +1,67 @@
+use crate::{Ast, BinOp};
+
+grammar;
+
+match {
+    // arith
+    "+",
+    "-",
+    "*",
+    "**",
+
+    // bitwise
+    "|",
+    "&",
+    "^",
+    "~",
+
+    "(",
+    ")",
+
+    r"[0-9]+",
+    r"[a-zA-Z]\w*",
+
+    // skip whitespace
+    r"\s*" => { },
+}
+
+pub Ast: Ast<'input> = BitwiseExpr;
+
+BitwiseExpr: Ast<'input> = {
+    <lhs:BitwiseExpr> "&" <rhs:AddArithExpr> => Ast::new_binop(lhs, BinOp::And, rhs),
+    <lhs:BitwiseExpr> "|" <rhs:AddArithExpr> => Ast::new_binop(lhs, BinOp::Or, rhs),
+    <lhs:BitwiseExpr> "^" <rhs:AddArithExpr> => Ast::new_binop(lhs, BinOp::Xor, rhs),
+    AddArithExpr,
+};
+
+AddArithExpr: Ast<'input> = {
+    <lhs:AddArithExpr> "+" <rhs:MulArithExpr> => Ast::new_binop(lhs, BinOp::Add, rhs),
+    <lhs:AddArithExpr> "-" <rhs:MulArithExpr> => Ast::new_binop(
+            lhs,
+            BinOp::Add,
+            Ast::new_binop(Ast::Constant(-1), BinOp::Mul, rhs),
+        ),
+    MulArithExpr,
+};
+
+MulArithExpr: Ast<'input> = {
+    <lhs:MulArithExpr> "*" <rhs:PowArithExpr> => Ast::new_binop(lhs, BinOp::Mul, rhs),
+    PowArithExpr,
+};
+
+PowArithExpr: Ast<'input> = {
+    <lhs:PowArithExpr> "**" <rhs:NotExpr> => Ast::new_binop(lhs, BinOp::Pow, rhs),
+    NotExpr,
+};
+
+NotExpr: Ast<'input> = {
+    "~" <expr:NotExpr> => Ast::Not(Box::new(expr)),
+    "-" <expr:NotExpr> => Ast::new_binop(Ast::Constant(-1), BinOp::Mul, expr),
+    Term,
+};
+
+Term: Ast<'input> = {
+    r"[a-zA-Z]\w*" => Ast::Variable(<>),
+    r"[0-9]+" => Ast::Constant(<>.parse().unwrap()),
+    "(" <Ast> ")",
+};

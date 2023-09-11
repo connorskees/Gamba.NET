@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 egg = "0.9.5"
+expr-utils = { path = "./expr-utils" }
 
 [profile.release]
 panic = "abort"

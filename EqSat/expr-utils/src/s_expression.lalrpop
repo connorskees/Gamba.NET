@@ -1,0 +1,41 @@
+use crate::{Ast, BinOp};
+
+grammar;
+
+match {
+    // arith
+    "+",
+    "*",
+    "**",
+
+    // bitwise
+    "|",
+    "&",
+    "^",
+    "~",
+
+    "(",
+    ")",
+
+    r"-?[0-9]+",
+    r"[a-zA-Z][\w\[\]]*",
+
+    // skip whitespace
+    r"\s*" => { },
+}
+
+BinOp: BinOp = {
+    "+" => BinOp::Add,
+    "*" => BinOp::Mul,
+    "**" => BinOp::Pow,
+    "|" => BinOp::Or,
+    "&" => BinOp::And,
+    "^" => BinOp::Xor,
+};
+
+pub Ast: Ast<'input> = {
+    r"[a-zA-Z][\w\[\]]*" => Ast::Variable(<>),
+    r"-?[0-9]+" => Ast::Constant(<>.parse().unwrap()),
+    "(" <op:BinOp> <lhs:Ast> <rhs:Ast> ")" => Ast::new_binop(lhs, op, rhs),
+    "(" "~" <node:Ast> ")" => Ast::Not(Box::new(node)),
+};
