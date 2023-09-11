@@ -1,14 +1,13 @@
 use egg::*;
 
 use crate::{
-    const_fold::Rewrite,
-    cost::Cost,
+    classification::{AstClassification, ClassificationResult},
+    const_fold::{wrap, Rewrite},
     rules::{
         bitwise_power_of_two::{is_power_of_two, BitwisePowerOfTwoFactorApplier},
         duplicate_children_mul_add::{is_const, DuplicateChildrenMulAddApplier},
         rewrite_power::{can_rewrite_power, RewritePowerApplier},
     },
-    AstClassification, Expr,
 };
 
 mod bitwise_power_of_two;
@@ -206,28 +205,35 @@ pub fn make_rules() -> Vec<Rewrite> {
         rewrite!("mba-13"; "(~ (& ?x ?y))" => "(| (~ ?x) (~ ?y))"),
         rewrite!("mba-14"; "(~ (^ ?x ?y))" => "(| (& ?x ?y) (~ (| ?x ?y)))"),
         rewrite!("mba-15"; "(~ (| ?x ?y))" => "(& (~ ?x) (~ ?y))"),
-        rewrite!("mba-19"; "(~ (& (~ ?a48) (~ ?a46)))" => "(| ?a46 ?a48)"),
-        rewrite!("mba-22"; "(& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46)))" => "(^ ?a46 ?a48)"),
-        rewrite!("mba-23"; "(& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46)))" => "(^ ?a46 ?a48)"),
-        rewrite!("mba-24"; "(& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46))))" => "(^ ?a21 ?a46)"),
-        rewrite!("mba-25"; "(~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))))" => "(~ (^ ?a46 ?a48))"),
-        rewrite!("mba-26"; "(~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46)))))" => "(~ (^ ?a21 ?a46))"),
-        rewrite!("mba-27"; "(& (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))) (~ ?a21))" => "(& (~ ?a21) (^ ?a46 ?a48))"),
-        rewrite!("mba-28"; "(& ?a21 (~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46)))))" => "(+ 0 (~ (| (~ ?a21) (^ ?a46 ?a48))))"),
-        rewrite!("mba-29"; "(~ (& (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))) (~ ?a21)))" => "(~ (& (~ ?a21) (^ ?a46 ?a48)))"),
-        rewrite!("mba-30"; "(~ (& ?a21 (~ (& (~ (& (~ ?a48) (~ ?a46))) (~ (& ?a48 ?a46))))))" => "(| (~ ?a21) (^ ?a46 ?a48))"),
-        rewrite!("mba-31"; "(& (~ ?a48) (~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46))))))" => "(~ (| ?a48 (^ ?a21 ?a46)))"),
-        rewrite!("mba-32"; "(~ (& (~ ?a48) (~ (& (~ (& ?a21 ?a46)) (~ (& (~ ?a21) (~ ?a46)))))))" => "(| ?a48 (^ ?a21 ?a46))"),
-        rewrite!("mba-33"; "(+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46))))" => "(+ (* 2 -1) (* -1 (^ ?a21 (^ ?a46 ?a48))))"),
-        rewrite!("mba-34"; "(+ (^ ?a48 (^ ?a21 ?a46)) (+ (& ?a48 (| (~ ?a21) (~ ?a46))) (+ (& (~ ?a48) (~ (^ ?a21 ?a46))) (| (~ ?a48) (| ?a21 ?a46)))))" => "(* 2 -1)"),
+        rewrite!("mba-19"; "(~ (& (~ ?a) (~ ?b)))" => "(| ?b ?a)"),
+        rewrite!("mba-22"; "(& (~ (& (~ ?a) (~ ?b))) (~ (& ?a ?b)))" => "(^ ?b ?a)"),
+        // my new rules
+        rewrite!("not-to-arith"; "(~ ?a)" => "(+ (* ?a -1) -1)"),
+        rewrite!("arith-to-not"; "(+ (* ?a -1) -1)" => "(~ ?a)"),
+        rewrite!("distribute"; "(* ?a (+ ?b ?c))" => "(+ (* ?a ?b) (* ?a ?c))"),
+        rewrite!("new-0"; "(+ ?x (& ?y (~ ?x)))" => "(| ?x ?y)"),
+        rewrite!("new-1"; "(+ (^ ?x ?y) (* -1 ?x))" => "(+ ?y (* -2 (& ?x ?y)))"),
+        rewrite!("new-2"; "(+ (^ ?x ?y) (* -1 (| ?x ?y)))" => "(* -1 (& ?x ?y))"),
+        rewrite!("new-3"; "(+ (| ?a ?b) (* ?a -1))" => "(& (~ ?a) ?b)"),
+        rewrite!("new-4"; "(+ (* ?a -1) ?b)" => "(* -1 (+ ?a (* ?b -1)))"),
+        rewrite!("new-5"; "(* ?a 2)" => "(+ ?a ?a)"),
+        rewrite!("new-6"; "(+ (& ?a ?b) (^ ?a ?b))" => "(| ?a ?b)"),
+        rewrite!("new-7"; "(+ (& ?a ?b) (| ?a ?b))" => "(+ ?a ?b)"),
+        rewrite!("new-8"; "(+ (| ?a ?b) (* -1 (^ ?a ?b)))" => "(& ?a ?b)"),
+        rewrite!("new-9"; "(+ (| ?a ?b) (* -1 (& ?a ?b)))" => "(| ?a ?b)"),
+        rewrite!("new-10"; "(+ (~ (& ?a ?b)) ?a)" => "(+ -1 (& ?a (~ ?b)))"),
+        rewrite!("new-11"; "(| (& ?a ?b) ?a)" => "?a"),
+        rewrite!("new-12"; "(| (| ?a ?b) ?a)" => "(| ?a ?b)"),
+        rewrite!("new-13"; "(| (^ ?a ?b) ?a)" => "(| ?a ?b)"),
+        rewrite!("new-14"; "(+ (^ ?a ?b) ?a)" => "(+ ?b (* 2 (& ?a (~ ?b))))"),
+        rewrite!("new-15"; "(+ (| ?a ?b) ?a)" => "(+ (~ (| ?a (~ ?b))) (* 2 ?a))"),
+        rewrite!("new-16"; "(& (^ ?a ?b) ?a)" => "(& ?a (~ ?b))"),
     ]
 }
 
-fn read_constant(
-    data: &Option<(AstClassification, Option<PatternAst<Expr>>, Cost)>,
-) -> Option<i64> {
-    match data.as_ref()?.0 {
-        AstClassification::Constant { value } => Some(value),
+pub fn read_constant(data: &Option<ClassificationResult>) -> Option<i128> {
+    match data.as_ref()?.classification {
+        AstClassification::Constant { value } => Some(wrap(value)),
         _ => None,
     }
 }

@@ -1,12 +1,21 @@
 use std::time::{Duration, Instant};
 
+use const_fold::EEGraph;
 use egg::*;
+use expr_utils::{Ast, GambaExpressionPrinter, SExpressionPrinter};
 
-use crate::{const_fold::ConstantFold, cost::EGraphCostFn, rules::make_rules};
+use crate::{
+    const_fold::{simplify_expression_with_simba, ConstantFold},
+    cost::{get_cost, EGraphCostFn},
+    rules::make_rules,
+};
 
+mod bitwise_list;
+mod classification;
 mod const_fold;
 mod cost;
 mod rules;
+mod simba;
 
 define_language! {
     pub enum Expr {
@@ -21,13 +30,60 @@ define_language! {
         "~" = Neg([Id; 1]),        // (~ a)
 
         // Values:
-        Constant(i64),             // (int)
-        Symbol(Symbol),            // (x)
+        Constant(i128),             // (int)
+        Symbol(Symbol),             // (x)
     }
 }
 
 impl Expr {
-    pub fn num(&self) -> Option<i64> {
+    pub fn to_ast<'a>(&'a self, egraph: &'a EEGraph) -> Ast<'a> {
+        let f = |id| {
+            let id = egraph.find(id);
+            let nodes = &egraph[id].nodes;
+            nodes
+                .iter()
+                .min_by_key(|node| get_cost(egraph, node))
+                .unwrap()
+        };
+
+        match self {
+            Expr::Add([a, b]) => Ast::new_binop(
+                f(*a).to_ast(egraph),
+                expr_utils::BinOp::Add,
+                f(*b).to_ast(egraph),
+            ),
+            Expr::Mul([a, b]) => Ast::new_binop(
+                f(*a).to_ast(egraph),
+                expr_utils::BinOp::Mul,
+                f(*b).to_ast(egraph),
+            ),
+            Expr::Pow([a, b]) => Ast::new_binop(
+                f(*a).to_ast(egraph),
+                expr_utils::BinOp::Pow,
+                f(*b).to_ast(egraph),
+            ),
+            Expr::And([a, b]) => Ast::new_binop(
+                f(*a).to_ast(egraph),
+                expr_utils::BinOp::And,
+                f(*b).to_ast(egraph),
+            ),
+            Expr::Or([a, b]) => Ast::new_binop(
+                f(*a).to_ast(egraph),
+                expr_utils::BinOp::Or,
+                f(*b).to_ast(egraph),
+            ),
+            Expr::Xor([a, b]) => Ast::new_binop(
+                f(*a).to_ast(egraph),
+                expr_utils::BinOp::Xor,
+                f(*b).to_ast(egraph),
+            ),
+            Expr::Neg([a]) => Ast::Not(Box::new(f(*a).to_ast(egraph))),
+            Expr::Constant(a) => Ast::Constant(*a as i64 as i128),
+            Expr::Symbol(a) => Ast::Variable(a.as_str()),
+        }
+    }
+
+    pub fn num(&self) -> Option<i128> {
         match self {
             Expr::Constant(n) => Some(*n),
             _ => None,
@@ -35,18 +91,8 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum AstClassification {
-    Unknown,
-    Constant { value: i64 },
-    Bitwise,
-    Linear { is_variable: bool },
-    Nonlinear,
-    Mixed,
-}
-
 /// parse an expression, simplify it using egg, and pretty print it back out
-fn simplify(s: &str, optimize_for_linearity: bool) -> String {
+fn simplify(s: &str, optimize_for_linearity: bool, use_simba: bool) -> String {
     let expr: RecExpr<Expr> = s.parse().unwrap();
 
     // Create the runner. You can enable explain_equivalence to explain the equivalence,
@@ -54,11 +100,14 @@ fn simplify(s: &str, optimize_for_linearity: bool) -> String {
     let explain_equivalence = false;
     let mut runner: Runner<Expr, ConstantFold> = Runner::default()
         .with_time_limit(Duration::from_millis(5000))
-        .with_expr(&expr);
+        .with_node_limit(u32::MAX as usize)
+        .with_iter_limit(u16::MAX as usize);
 
     if explain_equivalence {
         runner = runner.with_explanations_enabled();
     }
+
+    runner = runner.with_expr(&expr);
 
     let rules = make_rules();
 
@@ -81,6 +130,21 @@ fn simplify(s: &str, optimize_for_linearity: bool) -> String {
         extractor.find_best(root)
     };
 
+    let best = if use_simba {
+        let mut egraph = EEGraph::new(ConstantFold);
+
+        for expr in best.as_ref() {
+            egraph.add(expr.clone());
+        }
+
+        let mut simba_best = RecExpr::default();
+        simplify_expression_with_simba(&egraph, best.as_ref().last().unwrap(), &mut simba_best);
+
+        simba_best.to_string()
+    } else {
+        best.to_string()
+    };
+
     let duration = start.elapsed();
     println!("Time elapsed in simplify() is: {:?}", duration);
 
@@ -89,34 +153,70 @@ fn simplify(s: &str, optimize_for_linearity: bool) -> String {
         expr, best, best_cost
     );
 
-    best.to_string()
+    best
 }
 
-fn main() {
-    // Get the program arguments.
-    let mut args = std::env::args();
+fn read_expr_from_args() -> String {
+    let mut args = std::env::args().skip(1);
 
-    // Skip the first argument since it's always the path to the current program.
-    args.next();
-
-    // Read the optional expression to simplify.
-    let expr = if let Some(next) = args.next() {
+    if let Some(next) = args.next() {
         next
     } else {
         std::fs::read_to_string("test-input.txt").unwrap()
-    };
+    }
+}
 
+fn main() {
+    let expr = read_expr_from_args();
     println!("Attempting to simplify expression: {}", expr);
 
-    let mut simplified = simplify(expr.as_str(), true);
+    let simplified = simplify(&expr, false, false);
 
-    for i in 0..10 {
-        simplified = simplify(&simplified, i % 2 == 0);
-    }
-
-    simplified = simplify(&simplified, false);
-    simplified = simplify(&simplified, false);
     println!("{}", simplified);
+}
+
+/// Run SiMBA simplification on the given expression. It is the responsibility
+/// of the caller to ensure the expression is linear.
+#[allow(unused)]
+fn run_simba(expr: &str) {
+    let start = Instant::now();
+    let ast = expr_utils::s_expression::AstParser::new()
+        .parse(expr)
+        .unwrap();
+    let mut solver = simba::Solver::new(ast);
+    let ast = solver.solve();
+    let printed = GambaExpressionPrinter::print(&ast);
+
+    let end = start.elapsed();
+
+    println!(
+        "{} in {end:?}",
+        solver.original_variables.replace_vars(printed)
+    );
+}
+
+/// Test the output of every expression in a given GAMBA or SiMBA data file
+#[allow(unused)]
+fn test_input_file(path: &str) {
+    let input = std::fs::read_to_string(path).unwrap();
+
+    let mut total = 0;
+    let mut wrong = 0;
+    for line in input.lines() {
+        total += 1;
+        let expr = line.split(',').next().unwrap();
+        let ast = expr_utils::gamba_expression::AstParser::new()
+            .parse(expr)
+            .unwrap();
+        let line = SExpressionPrinter::print(&ast);
+        let printed = simplify(&line, false, false);
+
+        if printed != "(49374 + 3735936685*(x^y))" {
+            wrong += 1;
+        }
+        println!("{printed}");
+    }
+    println!("{wrong}/{total}");
 }
 
 #[cfg(test)]
@@ -125,7 +225,7 @@ mod test {
 
     macro_rules! validate_output {
         ($input:expr, $output:expr) => {
-            assert_eq!(simplify($input, false), $output)
+            assert_eq!(simplify($input, false, false), $output)
         };
     }
 
@@ -181,5 +281,15 @@ mod test {
     #[test]
     fn and_not_plus_doesnt_hang_regression_test() {
         validate_output!("(& (~ (+ a b)) a)", "(& a (~ (+ a b)))");
+    }
+
+    #[test]
+    fn distributes_not() {
+        validate_output!("(~ (| x (~ y)))", "(& y (~ x))");
+    }
+
+    #[test]
+    fn foo() {
+        validate_output!("(+ x (& y (~ x)))", "(| x y)");
     }
 }

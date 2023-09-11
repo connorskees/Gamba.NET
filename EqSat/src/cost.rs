@@ -8,7 +8,7 @@ use crate::{
 pub type Cost = i64;
 
 pub fn get_cost(egraph: &EEGraph, enode: &Expr) -> Cost {
-    let cost = |i: &Id| egraph[*i].data.as_ref().unwrap().2;
+    let cost = |i: &Id| egraph[*i].data.as_ref().unwrap().cost;
     match enode {
         Expr::Add([a, b]) | Expr::Mul([a, b]) => cost(a) + cost(b),
         Expr::Pow([a, b]) | Expr::And([a, b]) | Expr::Or([a, b]) | Expr::Xor([a, b]) => {
