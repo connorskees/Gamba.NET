@@ -98,10 +98,8 @@ fn simplify(s: &str, optimize_for_linearity: bool, use_simba: bool) -> String {
     // Create the runner. You can enable explain_equivalence to explain the equivalence,
     // but it comes at a severe performance penalty.
     let explain_equivalence = false;
-    let mut runner: Runner<Expr, ConstantFold> = Runner::default()
-        .with_time_limit(Duration::from_millis(5000))
-        .with_node_limit(u32::MAX as usize)
-        .with_iter_limit(u16::MAX as usize);
+    let mut runner: Runner<Expr, ConstantFold> =
+        Runner::default().with_time_limit(Duration::from_millis(5000));
 
     if explain_equivalence {
         runner = runner.with_explanations_enabled();
@@ -168,6 +166,7 @@ fn read_expr_from_args() -> String {
 
 fn main() {
     let expr = read_expr_from_args();
+
     println!("Attempting to simplify expression: {}", expr);
 
     let simplified = simplify(&expr, false, false);
@@ -291,5 +290,9 @@ mod test {
     #[test]
     fn foo() {
         validate_output!("(+ x (& y (~ x)))", "(| x y)");
+        validate_output!(
+            "(+ (* (& d (* a d)) (| d (* a d))) (* (& (~ d) (* a d)) (& d (~ (* a d)))))",
+            "(* d (* d a))"
+        );
     }
 }

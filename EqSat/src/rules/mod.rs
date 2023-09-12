@@ -198,7 +198,6 @@ pub fn make_rules() -> Vec<Rewrite> {
         rewrite!("mba-4"; "(+ (| ?d ?a) (* -1 (& ?a (~ ?d))))" => "?d"),
         rewrite!("mba-5"; "(+ (* -1 (& ?a (~ ?d))) (| ?d ?a))" => "?d"),
         rewrite!("mba-6"; "(+ (& ?a (~ ?d)) (& ?d ?a))" => "?a"),
-        rewrite!("mba-8"; "(+ (* (& ?d (* ?a ?d)) (| ?d (* ?a ?d))) (* (& (~ ?d) (* ?a ?d)) (& ?d (~ (* ?a ?d)))))" => "(* (** ?d 2) ?a)"),
         rewrite!("mba-9"; "(+ (+ ?a (* -2 ?d)) (* 2 (& (~ ?a) (* 2 ?d))))" => "(^ ?a (* 2 ?d))"),
         rewrite!("mba-10"; "(~ (* ?x ?y))" => "(+ (* (~ ?x) ?y) (+ ?y -1))"),
         rewrite!("mba-12"; "(~ (+ ?x (* ?y -1)))" => "(+ (~ ?x) (* (+ (~ ?y) 1) -1))"),
@@ -220,7 +219,7 @@ pub fn make_rules() -> Vec<Rewrite> {
         rewrite!("new-6"; "(+ (& ?a ?b) (^ ?a ?b))" => "(| ?a ?b)"),
         rewrite!("new-7"; "(+ (& ?a ?b) (| ?a ?b))" => "(+ ?a ?b)"),
         rewrite!("new-8"; "(+ (| ?a ?b) (* -1 (^ ?a ?b)))" => "(& ?a ?b)"),
-        rewrite!("new-9"; "(+ (| ?a ?b) (* -1 (& ?a ?b)))" => "(| ?a ?b)"),
+        rewrite!("new-9"; "(+ (| ?a ?b) (* -1 (& ?a ?b)))" => "(^ ?a ?b)"),
         rewrite!("new-10"; "(+ (~ (& ?a ?b)) ?a)" => "(+ -1 (& ?a (~ ?b)))"),
         rewrite!("new-11"; "(| (& ?a ?b) ?a)" => "?a"),
         rewrite!("new-12"; "(| (| ?a ?b) ?a)" => "(| ?a ?b)"),
@@ -228,6 +227,11 @@ pub fn make_rules() -> Vec<Rewrite> {
         rewrite!("new-14"; "(+ (^ ?a ?b) ?a)" => "(+ ?b (* 2 (& ?a (~ ?b))))"),
         rewrite!("new-15"; "(+ (| ?a ?b) ?a)" => "(+ (~ (| ?a (~ ?b))) (* 2 ?a))"),
         rewrite!("new-16"; "(& (^ ?a ?b) ?a)" => "(& ?a (~ ?b))"),
+        rewrite!("new-17"; "(+ (* ?a ?a) (* ?a (~ ?a)))" => "(* ?a -1)"),
+        rewrite!("new-18"; "(+ (* ?a ?b) 1)" => "(* (~ (* ?a ?b)) -1)"),
+        rewrite!("new-19"; "(+ (* ?a ?b) -1)" => "(~ (* (* ?a -1) ?b))"),
+        rewrite!("new-20"; "(+ (* ?a ?b) ?a)" => "(* (* -1 ?a) (~ ?b))"),
+        rewrite!("new-21"; "(& ?a (~ ?b))" => "(+ ?a (* (& ?a ?b) -1))"),
     ]
 }
 
